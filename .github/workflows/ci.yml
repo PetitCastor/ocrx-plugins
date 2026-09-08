@@ -79,14 +79,20 @@ jobs:
           fi
           echo "Plugin boundary clean: no engine/transport references under src/."
 
-      # The message must not spell the retired name itself. rg skips dot-directories unless asked,
-      # so this file is not scanned today and a self-naming message would still pass — but that is
-      # an accident of the default, not a property of the gate. Keeping the name out of the message
-      # means the gate stays correct if --hidden is ever added here.
+      # Neither the message nor the pattern may spell the retired name, or the gate matches its own
+      # source. Writing the pattern with character classes reads as the same string to grep without
+      # the literal appearing in this file, so the gate needs no exclusion for itself and does not
+      # depend on a tool skipping dot-directories by default — which is the only reason the earlier
+      # rg form passed. Same pattern as the gates in ocrx-engine, ocrx-sdk and ocrx-site.
       - name: Legacy identity gate
         shell: bash
         run: |
-          if rg -n -i "gamecapture" --glob '!bin/**' --glob '!obj/**' .; then
+          matches=$(grep -RInE '[G]ameCapture|[g]amecapture' . \
+            --exclude-dir=.git \
+            --exclude-dir=bin \
+            --exclude-dir=obj || true)
+          if [ -n "$matches" ]; then
+            echo "$matches"
             echo "::error::Stale legacy identity found."
             exit 1
           fi
