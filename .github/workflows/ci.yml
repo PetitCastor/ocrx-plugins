@@ -79,11 +79,15 @@ jobs:
           fi
           echo "Plugin boundary clean: no engine/transport references under src/."
 
+      # The message must not spell the retired name itself. rg skips dot-directories unless asked,
+      # so this file is not scanned today and a self-naming message would still pass — but that is
+      # an accident of the default, not a property of the gate. Keeping the name out of the message
+      # means the gate stays correct if --hidden is ever added here.
       - name: Legacy identity gate
         shell: bash
         run: |
           if rg -n -i "gamecapture" --glob '!bin/**' --glob '!obj/**' .; then
-            echo "::error::Stale GameCapture identity found."
+            echo "::error::Stale legacy identity found."
             exit 1
           fi
 
