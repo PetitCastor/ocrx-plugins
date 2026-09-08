@@ -41,7 +41,11 @@ jobs:
           .\scripts\Test-ReleaseDescriptor.ps1 -Tag $env:GITHUB_REF_NAME
           $manifest = Get-Content ".github/release-manifests/$env:GITHUB_REF_NAME.json" -Raw | ConvertFrom-Json
           "tag=$($manifest.tag)" >> $env:GITHUB_OUTPUT
-          "prerelease=$([string]($manifest.channel -eq 'preview').ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          # The step below reads this as a string and compares it to 'true', so emit the word
+          # rather than casting the comparison: a PowerShell cast binds looser than a method call,
+          # so [string](...).ToLowerInvariant() called ToLowerInvariant on the Boolean itself and
+          # threw before any release could be created.
+          "prerelease=$(if ($manifest.channel -eq 'preview') { 'true' } else { 'false' })" >> $env:GITHUB_OUTPUT
           "plugins=$($manifest.plugins -join ',')" >> $env:GITHUB_ENV
 
       - name: Read pinned engine version
