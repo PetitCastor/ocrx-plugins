@@ -10,6 +10,12 @@ $ErrorActionPreference = 'Stop'
 # The engine treats a preview catalog entry with no (or a wrong) "channel" value as belonging to the
 # wrong channel and rejects the WHOLE preview catalog fetch — so plugins.preview.json entries MUST
 # carry "channel": "preview" explicitly. plugins.json entries must omit "channel" or say "stable".
+#
+# Also validates games.json against the shape ocrx-engine's GameCatalog.IsUsable enforces (id,
+# name, a reference with positive width/height, and at least one non-blank windowMatch rule), and
+# that every plugin catalog entry's optional "game" field names an id that actually exists there —
+# a dangling id degrades silently to RoiReference.Default in the engine, so this is the one place
+# that catches the typo before it ships.
 
 function Test-CatalogFile {
     param(
@@ -62,6 +68,56 @@ function Test-CatalogFile {
     return $ids
 }
 
+function Test-GamesCatalogFile {
+    param(
+        [Parameter(Mandatory)] [string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        throw "$Path is missing."
+    }
+
+    try {
+        $parsed = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    }
+    catch {
+        throw "$Path is not valid JSON."
+    }
+
+    $entries = if ($null -eq $parsed) { @() } else { @($parsed) }
+
+    $ids = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($entry in $entries) {
+        foreach ($field in @('id', 'name')) {
+            if ([string]::IsNullOrWhiteSpace($entry.$field)) {
+                throw "$($Path): an entry is missing required field '$field'."
+            }
+        }
+
+        if ($entry.id -notmatch '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$' -or $entry.id.Length -gt 64) {
+            throw "$($Path): id '$($entry.id)' is not a valid kebab-case slug."
+        }
+
+        if (-not $ids.Add($entry.id)) {
+            throw "$($Path): duplicate id '$($entry.id)'."
+        }
+
+        if ($null -eq $entry.reference -or $entry.reference.width -le 0 -or $entry.reference.height -le 0) {
+            throw "$($Path): entry '$($entry.id)' needs a reference width/height > 0."
+        }
+
+        $executables = if ($null -eq $entry.windowMatch.executables) { @() } else { @($entry.windowMatch.executables) }
+        $titlePatterns = if ($null -eq $entry.windowMatch.titlePatterns) { @() } else { @($entry.windowMatch.titlePatterns) }
+        $hasMatch = ($executables | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) `
+            -or ($titlePatterns | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if (-not $hasMatch) {
+            throw "$($Path): entry '$($entry.id)' needs at least one non-blank windowMatch.executables or windowMatch.titlePatterns entry."
+        }
+    }
+
+    return $ids
+}
+
 function Get-DeclaredPluginNames {
     $pluginNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     $sourceFiles = Get-ChildItem -Path 'src' -Filter '*.cs' -Recurse -File
@@ -86,6 +142,7 @@ function Get-DeclaredPluginNames {
 
 $stableIds = Test-CatalogFile -Path 'plugins.json' -ExpectedChannel 'stable'
 $previewIds = Test-CatalogFile -Path 'plugins.preview.json' -ExpectedChannel 'preview'
+$gameIds = Test-GamesCatalogFile -Path 'games.json'
 $declaredPluginNames = Get-DeclaredPluginNames
 
 foreach ($catalogPath in @('plugins.json', 'plugins.preview.json')) {
@@ -96,6 +153,10 @@ foreach ($catalogPath in @('plugins.json', 'plugins.preview.json')) {
         if (-not $declaredPluginNames.Contains($entry.clientName)) {
             throw "${catalogPath}: entry '$($entry.id)' has clientName '$($entry.clientName)', but no plugin under src/ declares that exact IPlugin.Name."
         }
+
+        if ($null -ne $entry.game -and -not $gameIds.Contains($entry.game)) {
+            throw "${catalogPath}: entry '$($entry.id)' names game '$($entry.game)', which does not exist in games.json."
+        }
     }
 }
 
@@ -104,4 +165,4 @@ if ($collisions) {
     throw "plugins.preview.json duplicates stable id(s): $($collisions -join ', '). A promoted plugin must be removed from the preview catalog in the same PR."
 }
 
-Write-Host "plugins.json ($($stableIds.Count) entries) and plugins.preview.json ($($previewIds.Count) entries) are valid."
+Write-Host "plugins.json ($($stableIds.Count) entries), plugins.preview.json ($($previewIds.Count) entries) and games.json ($($gameIds.Count) entries) are valid."

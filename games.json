@@ -1,0 +1,11 @@
+[
+  {
+    "id": "star-citizen",
+    "name": "Star Citizen",
+    "windowMatch": {
+      "executables": ["StarCitizen.exe"],
+      "titlePatterns": ["Star Citizen"]
+    },
+    "reference": { "width": 2560, "height": 1440 }
+  }
+]

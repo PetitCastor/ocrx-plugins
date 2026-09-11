@@ -4,6 +4,7 @@
     "name": "SignaturePlugin",
     "clientName": "SignaturePlugin",
     "description": "Matches scan signature values to ore-cluster metadata.",
-    "downloadUrl": "https://github.com/PetitCastor/ocrx-plugins/releases/download/v2.0.0/SignaturePlugin-win-x64.zip"
+    "downloadUrl": "https://github.com/PetitCastor/ocrx-plugins/releases/download/v2.0.0/SignaturePlugin-win-x64.zip",
+    "game": "star-citizen"
   }
 ]
