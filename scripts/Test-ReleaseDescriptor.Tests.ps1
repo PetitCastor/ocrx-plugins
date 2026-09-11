@@ -72,6 +72,12 @@ Assert-Invalid 'preview tag with an unrecognized stage' `
     -Tag 'v1.2.4-signature-nightly.1' `
     -Manifest @{ tag = 'v1.2.4-signature-nightly.1'; channel = 'preview'; notes = 'n'; plugins = @('SignaturePlugin') }
 
+# One rule in Test-ReleaseDescriptorManifest has no test here: "a preview release must select
+# exactly one plugin". With a single-name $AllowedPlugins it cannot be reached — a repeated name
+# fails the duplicate check and a second distinct name fails the allowlist check, both before the
+# channel branch — so any assertion written for it would pass for the wrong reason. Restore a case
+# for it when a second plugin is allow-listed.
+
 # The frozen proofs of concept under src/ are outside the solution: nothing builds or tests them, so
 # a descriptor must never be able to ship one. This is the regression guard on $AllowedPlugins.
 Assert-Invalid 'frozen proof-of-concept plugin selected' `
