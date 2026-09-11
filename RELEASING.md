@@ -1,7 +1,11 @@
 # Releasing plugins
 
-`SignaturePlugin` is the stable plugin channel. `MissionPlugin` and `RefineryPlugin` are published
-only as public preview releases until they meet the stable bar.
+`SignaturePlugin` is the only releasable plugin, on both the stable and the preview channel.
+`MissionPlugin` and `RefineryPlugin` remain under `src/` as frozen proofs of concept: they are
+outside `OcrxPlugins.slnx`, nothing builds or tests them, and `$AllowedPlugins` in
+`scripts/ReleaseDescriptor.Validate.ps1` rejects any descriptor that selects one. Reviving either
+means restoring its test project from git history and adding it back to the solution, the allowlist
+and CI in the same PR.
 
 ## Prepare and publish a release
 
@@ -9,8 +13,8 @@ only as public preview releases until they meet the stable bar.
    and non-empty release notes are validated by CI when the tag is pushed.
 2. Merge the PR into `master`.
 3. Create the descriptor's exact tag on the merged commit. Tags, not pull-request merges, create
-   GitHub releases. Stable tags are `v1.2.3`; preview tags are
-   `v1.2.4-mission-alpha.1`, `v1.2.4-refinery-beta.2`, or the equivalent Signature form.
+   GitHub releases. Stable tags are `v1.2.3`; preview tags name the plugin and the stage, as in
+   `v1.2.4-signature-alpha.1` or `v1.2.4-signature-beta.2`.
 4. After a successful **stable** release, send a follow-up catalog PR that changes only that
    plugin's versioned URL in `plugins.json`. Do not use `releases/latest`: it is repository-wide,
    not plugin-wide. Preview releases belong in `plugins.preview.json` only after an engine version

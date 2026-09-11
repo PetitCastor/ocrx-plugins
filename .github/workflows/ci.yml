@@ -54,11 +54,9 @@ jobs:
       - name: Build
         run: dotnet build OcrxPlugins.slnx --no-restore -c Release
 
-      # Runs both plugins' unit suites plus the Refinery replay-parity tests against the pinned
-      # engine binary above. Mission parity is a real test in this suite, not omitted — it is
-      # `Skip`-attributed pending the outstanding in-game corpus capture ([USER ACTION], see
-      # 00-OVERVIEW.md), so it reports skipped rather than passed. Do not read a green run here as
-      # proof Mission parity executed; check the skip count.
+      # Runs SignaturePlugin's unit suite plus its replay-parity tests against the pinned engine
+      # binary above. MissionPlugin and RefineryPlugin are frozen proofs of concept outside
+      # OcrxPlugins.slnx and have no tests — a green run here says nothing about them.
       # Serialize test projects: xUnit collections cannot coordinate the Windows OCR engine
       # processes spawned by separate test assemblies.
       - name: Test
@@ -69,7 +67,9 @@ jobs:
       # a re-coupling — a plugin that added `using Grpc.Core;` still compiles against the SDK's public
       # surface — so this greps plugin SOURCES (.cs only) for the forbidden references. Moved here
       # from the mono-repo's ci.yml (SPLIT-MANIFEST.md's "Workflow split plan") and re-pointed at
-      # src/ directly: this repo has no src/Plugins/ level, both plugins sit at src/<Plugin>/.
+      # src/ directly: this repo has no src/Plugins/ level, every plugin sits at src/<Plugin>/. The
+      # sweep is over src/, not the solution, so the frozen proofs of concept stay inside the gate
+      # even though nothing builds them.
       - name: Plugin boundary grep gate
         shell: bash
         run: |
