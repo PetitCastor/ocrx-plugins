@@ -4,7 +4,12 @@
 
 # Every entry here is also a `src/<name>` project directory by convention; release.yml relies on
 # that to build its publish path map without hand-duplicating this list.
-$script:AllowedPlugins = @('MissionPlugin', 'RefineryPlugin', 'SignaturePlugin')
+#
+# SignaturePlugin is the only releasable plugin. MissionPlugin and RefineryPlugin still exist under
+# src/ but are frozen proofs of concept outside OcrxPlugins.slnx — nothing builds or tests them, so
+# they must not be selectable by a release descriptor. Re-add a name here (and to $shortNames below)
+# only together with its solution and test entries.
+$script:AllowedPlugins = @('SignaturePlugin')
 
 function Test-ReleaseDescriptorManifest {
     param(
@@ -25,8 +30,13 @@ function Test-ReleaseDescriptorManifest {
         if ($Tag -notmatch '^v\d+\.\d+\.\d+$') { throw 'Stable tags must be v<major>.<minor>.<patch>.' }
     }
     else {
+        # Unreachable while $AllowedPlugins holds a single name — two identical names die on the
+        # duplicate check above, any second distinct name on the allowlist check — so it is also
+        # untestable today (see Test-ReleaseDescriptor.Tests.ps1). Kept, not deleted: it is the rule
+        # that a preview ships one plugin, and it becomes live and testable again the moment a
+        # second plugin is allow-listed.
         if ($plugins.Count -ne 1) { throw 'A preview release must select exactly one plugin.' }
-        $shortNames = @{ MissionPlugin = 'mission'; RefineryPlugin = 'refinery'; SignaturePlugin = 'signature' }
+        $shortNames = @{ SignaturePlugin = 'signature' }
         $expected = '^v\d+\.\d+\.\d+-' + $shortNames[$plugins[0]] + '-(alpha|beta|rc)\.\d+$'
         if ($Tag -notmatch $expected) { throw "Preview tag '$Tag' must identify the selected plugin and stage." }
     }

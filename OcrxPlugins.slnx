@@ -1,12 +1,12 @@
 <Solution>
+  <!-- SignaturePlugin only. MissionPlugin and RefineryPlugin stay on disk under src/ as frozen
+       proofs of concept: they are deliberately outside the solution, so they are not built, not
+       tested and not released, and they are expected to drift from the SDK. Re-adding either one
+       means restoring its test project (see git history) before it ships. -->
   <Folder Name="/src/">
-    <Project Path="src/MissionPlugin/MissionPlugin.csproj" />
-    <Project Path="src/RefineryPlugin/RefineryPlugin.csproj" />
     <Project Path="src/SignaturePlugin/SignaturePlugin.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/MissionPlugin.Tests/MissionPlugin.Tests.csproj" />
-    <Project Path="tests/RefineryPlugin.Tests/RefineryPlugin.Tests.csproj" />
     <Project Path="tests/SignaturePlugin.Tests/SignaturePlugin.Tests.csproj" />
   </Folder>
 </Solution>

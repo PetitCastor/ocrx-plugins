@@ -32,13 +32,9 @@ Assert-Valid 'stable tag with one plugin' `
     -Tag 'v1.2.3' `
     -Manifest @{ tag = 'v1.2.3'; channel = 'stable'; notes = 'release notes'; plugins = @('SignaturePlugin') }
 
-Assert-Valid 'stable tag with multiple plugins' `
-    -Tag 'v2.0.0' `
-    -Manifest @{ tag = 'v2.0.0'; channel = 'stable'; notes = 'release notes'; plugins = @('MissionPlugin', 'RefineryPlugin') }
-
 Assert-Valid 'preview tag matching plugin and stage' `
-    -Tag 'v1.2.4-mission-alpha.1' `
-    -Manifest @{ tag = 'v1.2.4-mission-alpha.1'; channel = 'preview'; notes = 'preview notes'; plugins = @('MissionPlugin') }
+    -Tag 'v1.2.4-signature-alpha.1' `
+    -Manifest @{ tag = 'v1.2.4-signature-alpha.1'; channel = 'preview'; notes = 'preview notes'; plugins = @('SignaturePlugin') }
 
 Assert-Invalid 'tag mismatch between descriptor and pushed tag' `
     -Tag 'v1.2.3' `
@@ -68,17 +64,25 @@ Assert-Invalid 'stable tag with a prerelease suffix' `
     -Tag 'v1.2.3-rc.1' `
     -Manifest @{ tag = 'v1.2.3-rc.1'; channel = 'stable'; notes = 'n'; plugins = @('SignaturePlugin') }
 
-Assert-Invalid 'preview release selecting more than one plugin' `
-    -Tag 'v1.2.4-mission-alpha.1' `
-    -Manifest @{ tag = 'v1.2.4-mission-alpha.1'; channel = 'preview'; notes = 'n'; plugins = @('MissionPlugin', 'RefineryPlugin') }
-
-Assert-Invalid 'preview tag naming the wrong plugin' `
+Assert-Invalid 'preview tag naming a plugin that is not the selected one' `
     -Tag 'v1.2.4-refinery-alpha.1' `
-    -Manifest @{ tag = 'v1.2.4-refinery-alpha.1'; channel = 'preview'; notes = 'n'; plugins = @('MissionPlugin') }
+    -Manifest @{ tag = 'v1.2.4-refinery-alpha.1'; channel = 'preview'; notes = 'n'; plugins = @('SignaturePlugin') }
 
 Assert-Invalid 'preview tag with an unrecognized stage' `
-    -Tag 'v1.2.4-mission-nightly.1' `
-    -Manifest @{ tag = 'v1.2.4-mission-nightly.1'; channel = 'preview'; notes = 'n'; plugins = @('MissionPlugin') }
+    -Tag 'v1.2.4-signature-nightly.1' `
+    -Manifest @{ tag = 'v1.2.4-signature-nightly.1'; channel = 'preview'; notes = 'n'; plugins = @('SignaturePlugin') }
+
+# One rule in Test-ReleaseDescriptorManifest has no test here: "a preview release must select
+# exactly one plugin". With a single-name $AllowedPlugins it cannot be reached — a repeated name
+# fails the duplicate check and a second distinct name fails the allowlist check, both before the
+# channel branch — so any assertion written for it would pass for the wrong reason. Restore a case
+# for it when a second plugin is allow-listed.
+
+# The frozen proofs of concept under src/ are outside the solution: nothing builds or tests them, so
+# a descriptor must never be able to ship one. This is the regression guard on $AllowedPlugins.
+Assert-Invalid 'frozen proof-of-concept plugin selected' `
+    -Tag 'v1.2.3' `
+    -Manifest @{ tag = 'v1.2.3'; channel = 'stable'; notes = 'n'; plugins = @('RefineryPlugin') }
 
 if ($failures.Count -gt 0) {
     $failures | ForEach-Object { Write-Host "FAIL: $_" -ForegroundColor Red }

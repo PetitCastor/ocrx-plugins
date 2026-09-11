@@ -11,6 +11,10 @@ owns the connection, subscription, reconnection, and shutdown lifecycle.
 | --- | --- |
 | [SignaturePlugin](src/SignaturePlugin/README.md) | Interprets mining scan signatures as ore-cluster metadata. |
 
+`src/MissionPlugin` and `src/RefineryPlugin` are frozen proofs of concept. They are deliberately
+outside `OcrxPlugins.slnx`: nothing builds, tests, or releases them, and they are expected to drift
+from the SDK until someone revives them. Only the table above ships.
+
 ## Create a plugin
 
 ### 1. Create the projects
