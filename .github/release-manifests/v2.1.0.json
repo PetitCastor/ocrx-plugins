@@ -1,0 +1,8 @@
+{
+  "tag": "v2.1.0",
+  "channel": "stable",
+  "plugins": [
+    "SignaturePlugin"
+  ],
+  "notes": "SignaturePlugin v2.1.0 bundles Ocrx SDK 2.2.0, adding the nine-cell overlay anchor grid so the on-screen overlay can be positioned to any corner, edge, or centre. Replay-tested against OCRX Engine v2.0.8."
+}
