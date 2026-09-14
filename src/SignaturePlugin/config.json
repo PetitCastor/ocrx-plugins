@@ -1,7 +1,8 @@
 {
-  "configVersion": 2,
+  "configVersion": 3,
   "pipeName": "OCRX.Engine",
   "saveDebugFrames": false,
+  "overlayTheme": "default",
   "outputs": [
     {
       "type": "json",

@@ -105,7 +105,7 @@ jobs:
             $executable = "publish/$plugin/$plugin.exe"
             if (-not (Test-Path $executable)) { throw "Missing publish output: $executable" }
             $archive = "$plugin-win-x64.zip"
-            Compress-Archive -Path $executable -DestinationPath "release-assets/$archive"
+            Compress-Archive -Path "publish/$plugin/*" -DestinationPath "release-assets/$archive"
             $archives.Add($archive)
           }
           $archives | Set-Content -Encoding utf8 release-assets.txt

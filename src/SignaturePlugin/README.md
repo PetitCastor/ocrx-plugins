@@ -144,6 +144,23 @@ whatever the crop is yielding — otherwise a rect that has drifted off the badg
 stale against a game patch, would pin a dead value on screen indefinitely. The plugin also preserves
 its clear across dropped ticks and a lost session, so a gap cannot leave an old signature stuck.
 
+### Overlay themes
+
+`overlayTheme` selects the visual treatment for the overlay in
+`%LOCALAPPDATA%\OCRX\SignaturePlugin\config.json`:
+
+```json
+"overlayTheme": "default"
+```
+
+- `default` preserves the existing configurable pill unchanged.
+- `citizen` uses a compact navy, cyan-outlined technical pill with diagonal corner tabs.
+- `retro` uses a square-cornered purple arcade pill with one-bit pixel text.
+
+The `citizen` and `retro` presets own their visual settings, including their packaged fonts. Switch
+back to `default` to keep or manually edit the regular `overlay` properties such as colours, size,
+and padding. The selector does not change the template, placement, or edge-driven clearing policy.
+
 None of this can rescue a reading that is *steadily* wrong. The derived grid is dense — Corundum x3
 is 12675 and Quantanium x4 is 12680, five apart — so a persistent misread can land exactly on a
 neighbouring cluster with a delta of zero, indistinguishable from a correct reading. The debounce

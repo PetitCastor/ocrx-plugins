@@ -1,6 +1,11 @@
 using Ocrx.Sdk;
 
-internal sealed class SignaturePluginConfig : PluginConfig;
+namespace SignaturePlugin;
+
+internal sealed class SignaturePluginConfig : PluginConfig
+{
+    public string OverlayTheme { get; set; } = OverlayThemes.Default;
+}
 
 internal static class UserConfig
 {
