@@ -1,0 +1,8 @@
+{
+  "tag": "v2.2.0",
+  "channel": "stable",
+  "plugins": [
+    "SignaturePlugin"
+  ],
+  "notes": "SignaturePlugin v2.2.0 adds selectable overlay pill themes: Default preserves existing styling, Citizen adds a Star Citizen-inspired cyan holographic treatment, and Retro adds an 8-bit arcade style. This release bundles the licensed Rajdhani SemiBold and Press Start 2P fonts, and uses OCRX SDK 2.3.0."
+}
