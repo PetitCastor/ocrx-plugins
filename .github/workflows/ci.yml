@@ -20,6 +20,41 @@ jobs:
         shell: pwsh
         run: ./scripts/Test-PluginCatalog.ps1
 
+      # Regression guard for the "latest" downloadUrl bug, stable channel ONLY: the engine
+      # resolves "is there an update?" by HEAD-probing downloadUrl and reading the release tag
+      # off the redirect. A version-pinned URL (/releases/download/vX.Y.Z/...) redirects to
+      # itself, so the engine's update check always short-circuits to that one tag and never
+      # detects a newer release. Every plugins.json entry must use the version-less
+      # .../releases/latest/download/... form so the redirect always resolves to the current
+      # release. This must never touch plugins.preview.json: Test-PluginCatalog.ps1 intentionally
+      # requires preview entries to PIN an exact release tag (there is no "latest" alias for a
+      # preview build), so a version-less rule there would fight that check.
+      - name: Catalog download URL format gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pattern = '^https://github\.com/PetitCastor/ocrx-plugins/releases/latest/download/[A-Za-z0-9]+-win-x64\.zip$'
+          $failures = [System.Collections.Generic.List[string]]::new()
+
+          foreach ($path in @('plugins.json')) {
+              $parsed = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+              # ConvertFrom-Json turns a JSON "[]" into $null, not an empty array.
+              $entries = if ($null -eq $parsed) { @() } else { @($parsed) }
+
+              foreach ($entry in $entries) {
+                  if ($entry.downloadUrl -notmatch $pattern) {
+                      $failures.Add("${path}: entry '$($entry.id)' has a non-'latest' downloadUrl: $($entry.downloadUrl)")
+                  }
+              }
+          }
+
+          if ($failures.Count -gt 0) {
+              $failures | ForEach-Object { Write-Host "::error::$_" }
+              throw "$($failures.Count) catalog entry/entries use a version-pinned downloadUrl instead of the version-less /releases/latest/download/ form."
+          }
+
+          Write-Host "All catalog downloadUrl entries use the version-less latest form."
+
       - name: Release-descriptor validation checks
         shell: pwsh
         run: ./scripts/Test-ReleaseDescriptor.Tests.ps1
