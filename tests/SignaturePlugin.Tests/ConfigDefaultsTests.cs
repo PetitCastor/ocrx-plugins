@@ -97,6 +97,34 @@ public class ConfigDefaultsTests : IDisposable
     }
 
     [Fact]
+    public void ExistingOverlayConfig_GainsTheDefaultThemeWithoutChangingItsStyle()
+    {
+        var path = Seed("""
+            {
+              "configVersion": 2,
+              "outputs": [
+                {
+                  "type": "overlay",
+                  "overlay": {
+                    "template": "{name}",
+                    "foregroundColor": "#123456",
+                    "backgroundColor": "#654321"
+                  }
+                }
+              ]
+            }
+            """);
+
+        var config = JsonNode.Parse(File.ReadAllText(path))!;
+        var overlay = (config["outputs"] as JsonArray)![0]!["overlay"]!;
+
+        Assert.Equal(3, config["configVersion"]!.GetValue<int>());
+        Assert.Equal("default", config["overlayTheme"]!.GetValue<string>());
+        Assert.Equal("#123456", overlay["foregroundColor"]!.GetValue<string>());
+        Assert.Equal("#654321", overlay["backgroundColor"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void TheOverlayItShips_RendersTheResolvedNameNotRawJson()
     {
         var path = Seed();
@@ -134,11 +162,10 @@ public class ConfigDefaultsTests : IDisposable
     {
         var path = Seed();
 
-        var config = PluginConfig.Load<SignatureConfigForTest>(path);
+        var config = PluginConfig.Load<SignaturePluginConfig>(path);
 
-        Assert.Equal(2, config.ConfigVersion);
+        Assert.Equal(3, config.ConfigVersion);
+        Assert.Equal("default", config.OverlayTheme);
         Assert.Equal(["json", "overlay"], config.Outputs.Select(output => output.Type).ToArray());
     }
-
-    private sealed class SignatureConfigForTest : PluginConfig;
 }

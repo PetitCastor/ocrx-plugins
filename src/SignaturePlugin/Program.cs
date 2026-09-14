@@ -1,11 +1,13 @@
 using Ocrx.Sdk;
 using Ocrx.Sdk.Overlay;
+using SignaturePlugin;
 
 // The whole lifecycle — connect, subscribe, feed ticks, reconnect, summarise — is the host's; this
 // process only supplies the plugin. The host loads config.json itself (PluginHostOptions.ConfigFileName
 // defaults to "config.json") for the two settings every plugin has: pipeName and saveDebugFrames.
 var table = SignaturePlugin.SignatureTable.LoadUserFile();
 var config = PluginConfig.Load<SignaturePluginConfig>(UserConfig.Ensure());
+OverlayThemes.Apply(config);
 
 // The overlay sink lives in the opt-in Ocrx.Sdk.Overlay package, so the core SDK cannot
 // construct it: an "overlay" output whose factory was never registered here silently routes to a
