@@ -43,14 +43,36 @@ public sealed class SignaturePlugin : IOcrxPlugin
     /// </remarks>
     private const int ReconnectClearAttempt = 4;
 
+    /// <summary>
+    /// The opaque id SignaturePlugin gives its one projected setting — the overlay theme. The engine
+    /// forwards it back untouched on a user edit and never learns what it means, which is exactly why
+    /// it can live entirely inside this plugin with no engine-side manifest or version gate.
+    /// </summary>
+    private const string OverlayThemeSettingId = "overlayTheme";
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SignatureTable _table;
     private readonly SignatureAbsenceDebouncer _absence = new();
     private readonly SignatureConsensus _consensus = new();
+
+    // The pristine base config and its path, held so a live theme switch can rebuild the overlay from
+    // a clean base every time (see OnApplySettings). Null only in unit tests that exercise ticks
+    // without wiring settings; production always supplies both through Program.cs.
+    private readonly SignaturePluginConfig? _config;
+    private readonly string? _configPath;
     private IPluginServices? _services;
     private string? _lastObservation;
 
     public SignaturePlugin(SignatureTable? table = null) => _table = table ?? SignatureTable.LoadEmbedded();
+
+    internal SignaturePlugin(SignatureTable? table, SignaturePluginConfig config, string configPath)
+    {
+        _table = table ?? SignatureTable.LoadEmbedded();
+        _config = config ?? throw new ArgumentNullException(nameof(config));
+        _configPath = !string.IsNullOrWhiteSpace(configPath)
+            ? configPath
+            : throw new ArgumentException("Config path is required.", nameof(configPath));
+    }
     public string Name => "SignaturePlugin";
     public IReadOnlyList<RoiSubscription> Rois => SignaturePluginRois.All;
 
@@ -77,6 +99,90 @@ public sealed class SignaturePlugin : IOcrxPlugin
             ctx.Services.LogVerbose($"signature read '{text.Trim()}' — frame dump failed: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Projects the overlay-theme setting the moment a Track session opens, so the engine's panel has
+    /// the current value before the first tick. A plugin built without a config (unit tests) has no
+    /// setting to project and stays silent.
+    /// </summary>
+    public Task OnConnectedAsync(IPluginServices services, CancellationToken ct)
+        => _config is null ? Task.CompletedTask : services.PublishSettingsAsync(BuildSpec(_config), ct);
+
+    /// <summary>
+    /// Applies a user's overlay-theme edit entirely inside this process: validate the value against
+    /// <see cref="OverlayThemes"/>, rebuild the live overlay from a clean base, republish the effective
+    /// spec, and only then persist — so a failed rebuild leaves neither the running overlay nor
+    /// config.json ahead of the other. The engine is never asked to validate anything.
+    /// </summary>
+    public async Task OnApplySettings(ApplySettings apply, IPluginServices services, CancellationToken ct)
+    {
+        if (_config is null || _configPath is null) return;
+
+        var edit = apply.Values.FirstOrDefault(value =>
+            string.Equals(value.Id, OverlayThemeSettingId, StringComparison.Ordinal));
+        if (edit is null)
+            // No value for the one field this plugin owns — the engine forwarded an edit that is not
+            // ours. Nothing to do; never happens in practice but a no-op is the correct answer.
+            return;
+
+        // A blank value is a malformed edit, not a pick from the SELECT: reject it rather than let
+        // Normalize silently read it as an intentional reset to 'default'. Every real choice the
+        // engine forwards is one of the option strings this plugin declared.
+        if (string.IsNullOrWhiteSpace(edit.Value) || !OverlayThemes.IsKnown(OverlayThemes.Normalize(edit.Value)))
+        {
+            // The id is ours but the value is the user's: a bad one preserves the current theme rather
+            // than tearing the overlay down, and the plugin — not the engine — is what rejected it.
+            services.Log($"SignaturePlugin: ignoring unknown overlay theme '{edit.Value}'.");
+            return;
+        }
+
+        var theme = OverlayThemes.Normalize(edit.Value);
+        if (string.Equals(theme, OverlayThemes.Normalize(_config.OverlayTheme), StringComparison.Ordinal))
+        {
+            // Same theme already in effect. Republish so the panel reflects the current value, but do
+            // not rebuild — tearing down and re-drawing the overlay for a no-op change would flicker it.
+            await services.PublishSettingsAsync(BuildSpec(_config), ct);
+            return;
+        }
+
+        // Theme the derived overlay on a throwaway clone taken from the pristine base. _config's own
+        // Outputs stay the shipped default preset, so the next switch — including back to 'default' —
+        // always rebuilds from a clean overlay rather than from the last theme's mutated dimensions.
+        var themed = _config.CloneForSettings<SignaturePluginConfig>(_configPath);
+        themed.OverlayTheme = theme;
+        OverlayThemes.Apply(themed);
+
+        // Rebuild and republish against the themed clone *before* committing anything to _config, so a
+        // failure in either call leaves _config's in-memory theme and the on-disk file agreeing on the
+        // previous value rather than half-advanced. The one state this cannot hold is the live overlay:
+        // RebuildOutputsAsync swaps the running sinks first, so if PublishSettingsAsync then throws the
+        // overlay shows the new theme while config and the panel still read the old one. That heals on
+        // the next apply — _config.OverlayTheme is still the old value, so the change branch fires again
+        // — and undoing it would mean a rollback inside the host's rebuild, which is not worth it for a
+        // window this narrow.
+        await services.RebuildOutputsAsync(themed, ct);
+        await services.PublishSettingsAsync(BuildSpec(themed), ct);
+
+        _config.OverlayTheme = theme;
+        _config.Save(_configPath);
+    }
+
+    /// <summary>
+    /// Builds the effective spec: one SELECT field whose options come straight from
+    /// <see cref="OverlayThemes.Options"/> so they cannot drift from what can actually be applied, and
+    /// whose value is the config's current theme in canonical form.
+    /// </summary>
+    private static SettingsSpec BuildSpec(SignaturePluginConfig config) =>
+        new([
+            new SettingsField(
+                Id: OverlayThemeSettingId,
+                Label: "Overlay theme",
+                Type: SettingsFieldType.Select,
+                Value: OverlayThemes.Normalize(config.OverlayTheme),
+                Help: "Visual preset for the on-screen signature overlay.",
+                Options: OverlayThemes.Options,
+                Group: "Overlay"),
+        ]);
 
     public void OnSessionEvent(SessionEvent evt)
     {

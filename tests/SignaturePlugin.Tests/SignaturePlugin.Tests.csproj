@@ -23,7 +23,7 @@
     <ProjectReference Include="..\..\src\SignaturePlugin\SignaturePlugin.csproj" />
     <!-- TickDataBuilder, FakePluginServices, ReplayHarness, EngineLocator. Brings Ocrx.Sdk
          and Ocrx.Contracts transitively. -->
-    <PackageReference Include="Ocrx.Sdk.Testing" Version="2.3.0" />
+    <PackageReference Include="Ocrx.Sdk.Testing" Version="2.4.1" />
   </ItemGroup>
 
   <!-- Scan-mode corpus for ReplayParityTests.ScanSignature_corpus_matches_manifest_records. Kept

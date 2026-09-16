@@ -12,9 +12,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Ocrx.Sdk" Version="2.3.0" />
-    <PackageReference Include="Ocrx.Contracts" Version="2.3.0" />
-    <PackageReference Include="Ocrx.Sdk.Overlay" Version="2.3.0" />
+    <PackageReference Include="Ocrx.Sdk" Version="2.4.1" />
+    <PackageReference Include="Ocrx.Contracts" Version="2.4.1" />
+    <PackageReference Include="Ocrx.Sdk.Overlay" Version="2.4.1" />
   </ItemGroup>
 
   <ItemGroup>
