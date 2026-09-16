@@ -152,10 +152,14 @@ public sealed class SignaturePlugin : IOcrxPlugin
         themed.OverlayTheme = theme;
         OverlayThemes.Apply(themed);
 
-        // Rebuild and republish against the themed clone *before* committing anything to _config. Only
-        // once both have succeeded is the base config advanced and persisted — so an exception from
-        // either call leaves _config's in-memory theme, the on-disk file, and the published spec all
-        // still agreeing on the previous value, never half-advanced.
+        // Rebuild and republish against the themed clone *before* committing anything to _config, so a
+        // failure in either call leaves _config's in-memory theme and the on-disk file agreeing on the
+        // previous value rather than half-advanced. The one state this cannot hold is the live overlay:
+        // RebuildOutputsAsync swaps the running sinks first, so if PublishSettingsAsync then throws the
+        // overlay shows the new theme while config and the panel still read the old one. That heals on
+        // the next apply — _config.OverlayTheme is still the old value, so the change branch fires again
+        // — and undoing it would mean a rollback inside the host's rebuild, which is not worth it for a
+        // window this narrow.
         await services.RebuildOutputsAsync(themed, ct);
         await services.PublishSettingsAsync(BuildSpec(themed), ct);
 
