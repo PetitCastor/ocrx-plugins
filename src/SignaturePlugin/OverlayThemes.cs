@@ -9,11 +9,33 @@ internal static class OverlayThemes
     public const string Citizen = "citizen";
     public const string Retro = "retro";
 
+    /// <summary>
+    /// The selectable themes and their display labels — the single source the settings spec is
+    /// generated from, so the projected option list can never drift from what <see cref="Apply"/>
+    /// understands. The value strings are the SignaturePlugin-owned ids that travel the wire; the
+    /// labels are plugin presentation the engine shows verbatim.
+    /// </summary>
+    public static readonly IReadOnlyList<SettingsOption> Options =
+    [
+        new SettingsOption(Default, "Default"),
+        new SettingsOption(Citizen, "Star Citizen"),
+        new SettingsOption(Retro, "Retro"),
+    ];
+
+    /// <summary>The theme value in the canonical form <see cref="Apply"/> and <see cref="Options"/>
+    /// compare against: trimmed and lower-cased, defaulting a null/blank to <see cref="Default"/>.</summary>
+    public static string Normalize(string? theme) =>
+        string.IsNullOrWhiteSpace(theme) ? Default : theme.Trim().ToLowerInvariant();
+
+    /// <summary>Whether <paramref name="theme"/> (already normalized) is one this plugin can apply.</summary>
+    public static bool IsKnown(string theme) =>
+        Options.Any(option => string.Equals(option.Value, theme, StringComparison.Ordinal));
+
     public static void Apply(SignaturePluginConfig config)
     {
         ArgumentNullException.ThrowIfNull(config);
 
-        var theme = (config.OverlayTheme ?? Default).Trim().ToLowerInvariant();
+        var theme = Normalize(config.OverlayTheme);
         var overlay = config.Outputs
             .FirstOrDefault(output => string.Equals(output.Type, "overlay", StringComparison.OrdinalIgnoreCase))
             ?.Overlay;
