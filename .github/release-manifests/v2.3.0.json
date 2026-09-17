@@ -1,0 +1,8 @@
+{
+  "tag": "v2.3.0",
+  "channel": "stable",
+  "plugins": [
+    "SignaturePlugin"
+  ],
+  "notes": "SignaturePlugin v2.3.0 projects its overlay theme through the engine's generic plugin settings panel (PSET-09): pick Default, Citizen or Retro from the engine window while the plugin is running, and the change applies to the live overlay and is persisted by the plugin. v2.2.0 shipped the themes themselves but published no settings spec, so the engine's panel had nothing to render. Uses OCRX SDK 2.4.1 and is tested against engine v2.0.27."
+}
