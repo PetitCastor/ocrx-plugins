@@ -2,7 +2,7 @@
   "fields": [
     {
       "id": "overlayTheme",
-      "label": "Overlay theme",
+      "label": "Theme",
       "type": 0,
       "value": "default",
       "help": "Visual preset for the on-screen signature overlay.",
@@ -10,6 +10,25 @@
         { "value": "default", "label": "Default" },
         { "value": "citizen", "label": "Citizen" },
         { "value": "retro", "label": "Retro" }
+      ],
+      "group": "Overlay"
+    },
+    {
+      "id": "position",
+      "label": "Position",
+      "type": 0,
+      "value": "topcenter",
+      "help": "Where the signature overlay appears on screen.",
+      "options": [
+        { "value": "topleft", "label": "Top Left" },
+        { "value": "topcenter", "label": "Top Center" },
+        { "value": "topright", "label": "Top Right" },
+        { "value": "middleleft", "label": "Middle Left" },
+        { "value": "center", "label": "Center" },
+        { "value": "middleright", "label": "Middle Right" },
+        { "value": "bottomleft", "label": "Bottom Left" },
+        { "value": "bottomcenter", "label": "Bottom Center" },
+        { "value": "bottomright", "label": "Bottom Right" }
       ],
       "group": "Overlay"
     }

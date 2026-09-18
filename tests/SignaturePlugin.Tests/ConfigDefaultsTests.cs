@@ -118,8 +118,9 @@ public class ConfigDefaultsTests : IDisposable
         var config = JsonNode.Parse(File.ReadAllText(path))!;
         var overlay = (config["outputs"] as JsonArray)![0]!["overlay"]!;
 
-        Assert.Equal(3, config["configVersion"]!.GetValue<int>());
+        Assert.Equal(4, config["configVersion"]!.GetValue<int>());
         Assert.Equal("default", config["overlayTheme"]!.GetValue<string>());
+        Assert.Equal("topcenter", config["position"]!.GetValue<string>());
         Assert.Equal("#123456", overlay["foregroundColor"]!.GetValue<string>());
         Assert.Equal("#654321", overlay["backgroundColor"]!.GetValue<string>());
     }
@@ -164,8 +165,9 @@ public class ConfigDefaultsTests : IDisposable
 
         var config = PluginConfig.Load<SignaturePluginConfig>(path);
 
-        Assert.Equal(3, config.ConfigVersion);
+        Assert.Equal(4, config.ConfigVersion);
         Assert.Equal("default", config.OverlayTheme);
+        Assert.Equal("topcenter", config.Position);
         Assert.Equal(["json", "overlay"], config.Outputs.Select(output => output.Type).ToArray());
     }
 }

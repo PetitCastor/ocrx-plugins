@@ -5,6 +5,7 @@ namespace SignaturePlugin;
 internal sealed class SignaturePluginConfig : PluginConfig
 {
     public string OverlayTheme { get; set; } = OverlayThemes.Default;
+    public string Position { get; set; } = OverlayPositions.TopCenter;
 }
 
 internal static class UserConfig

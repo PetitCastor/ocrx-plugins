@@ -159,7 +159,21 @@ its clear across dropped ticks and a lost session, so a gap cannot leave an old 
 
 The `citizen` and `retro` presets own their visual settings, including their packaged fonts. Switch
 back to `default` to keep or manually edit the regular `overlay` properties such as colours, size,
-and padding. The selector does not change the template, placement, or edge-driven clearing policy.
+and padding. The theme selector does not change the template, placement, or edge-driven clearing
+policy.
+
+### Overlay position
+
+`position` selects where the overlay is anchored on the primary screen, in
+`%LOCALAPPDATA%\OCRX\SignaturePlugin\config.json`:
+
+```json
+"position": "topcenter"
+```
+
+One of `topleft`, `topcenter`, `topright`, `middleleft`, `center`, `middleright`, `bottomleft`,
+`bottomcenter`, or `bottomright`. Independent of the theme selector above — switching theme never
+moves the overlay, and switching position never changes its visual preset.
 
 None of this can rescue a reading that is *steadily* wrong. The derived grid is dense — Corundum x3
 is 12675 and Quantanium x4 is 12680, five apart — so a persistent misread can land exactly on a
