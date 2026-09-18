@@ -5,7 +5,6 @@
       "label": "Theme",
       "type": 0,
       "value": "default",
-      "help": "Visual preset for the on-screen signature overlay.",
       "options": [
         { "value": "default", "label": "Default" },
         { "value": "citizen", "label": "Citizen" },
@@ -18,7 +17,6 @@
       "label": "Position",
       "type": 0,
       "value": "topcenter",
-      "help": "Where the signature overlay appears on screen.",
       "options": [
         { "value": "topleft", "label": "Top Left" },
         { "value": "topcenter", "label": "Top Center" },
