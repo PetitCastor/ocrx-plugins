@@ -1,0 +1,8 @@
+{
+  "tag": "v2.6.0",
+  "channel": "stable",
+  "plugins": [
+    "SignaturePlugin"
+  ],
+  "notes": "SignaturePlugin v2.6.0 drops the redundant setting help text under Theme and Position, saving vertical room in the settings panel. Tested against OCRX engine v2.0.31."
+}
