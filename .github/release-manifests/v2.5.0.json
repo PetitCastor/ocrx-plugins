@@ -1,0 +1,8 @@
+{
+  "tag": "v2.5.0",
+  "channel": "stable",
+  "plugins": [
+    "SignaturePlugin"
+  ],
+  "notes": "SignaturePlugin v2.5.0 adds an overlay Position setting (9-cell anchor grid) alongside the renamed Theme setting, and fixes the saved position not being applied to the overlay at startup. Tested against OCRX engine v2.0.29."
+}
