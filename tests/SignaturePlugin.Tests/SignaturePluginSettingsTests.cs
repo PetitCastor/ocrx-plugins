@@ -5,12 +5,12 @@ using Xunit;
 namespace SignaturePlugin.Tests;
 
 // SignaturePlugin as the first consumer of the generic settings SDK: it projects its overlay theme
-// as one SELECT field and applies an edit entirely in-process. These assert the projection, the
-// live rebuild-and-persist, and that a bad or unowned value changes nothing.
+// and position as SELECT fields and applies an edit to either entirely in-process. These assert the
+// projection, the live rebuild-and-persist, and that a bad or unowned value changes nothing.
 public class SignaturePluginSettingsTests
 {
     [Fact]
-    public async Task Connect_projects_the_theme_as_one_select_carrying_the_current_value()
+    public async Task Connect_projects_theme_and_position_as_selects_carrying_the_current_values()
     {
         var (config, path) = TempConfig(OverlayThemes.Citizen);
         var plugin = new SignaturePlugin(null, config, path);
@@ -18,13 +18,21 @@ public class SignaturePluginSettingsTests
 
         await plugin.OnConnectedAsync(services, default);
 
-        var field = Assert.Single(Assert.Single(services.Published).Fields);
-        Assert.Equal("overlayTheme", field.Id);
-        Assert.Equal(SettingsFieldType.Select, field.Type);
-        Assert.Equal(OverlayThemes.Citizen, field.Value);
-        Assert.NotNull(field.Options);
+        var fields = Assert.Single(services.Published).Fields;
+        Assert.Equal(2, fields.Count);
+
+        var theme = fields.Single(field => field.Id == "overlayTheme");
+        Assert.Equal(SettingsFieldType.Select, theme.Type);
+        Assert.Equal(OverlayThemes.Citizen, theme.Value);
+        Assert.NotNull(theme.Options);
         // Options come straight from OverlayThemes, so the panel can never offer a theme Apply rejects.
-        Assert.Equal(new[] { "default", "citizen", "retro" }, field.Options.Select(option => option.Value));
+        Assert.Equal(new[] { "default", "citizen", "retro" }, theme.Options.Select(option => option.Value));
+
+        var position = fields.Single(field => field.Id == "position");
+        Assert.Equal(SettingsFieldType.Select, position.Type);
+        Assert.Equal(OverlayPositions.TopCenter, position.Value);
+        Assert.NotNull(position.Options);
+        Assert.Equal(9, position.Options.Count);
     }
 
     [Fact]
@@ -42,7 +50,7 @@ public class SignaturePluginSettingsTests
         Assert.Equal(76, Overlay(rebuilt).Height);
 
         // ...the panel gets the new value...
-        Assert.Equal(OverlayThemes.Citizen, Assert.Single(Assert.Single(services.Published).Fields).Value);
+        Assert.Equal(OverlayThemes.Citizen, ThemeField(services).Value);
 
         // ...and only the theme string persists: the base overlay preset is untouched on disk, so a
         // later switch has a clean preset to rebuild from.
@@ -82,7 +90,7 @@ public class SignaturePluginSettingsTests
         // No rebuild — re-drawing the overlay for a no-op change would flicker it — but the panel is
         // still refreshed with the current value.
         Assert.Empty(services.Rebuilt);
-        Assert.Equal(OverlayThemes.Citizen, Assert.Single(Assert.Single(services.Published).Fields).Value);
+        Assert.Equal(OverlayThemes.Citizen, ThemeField(services).Value);
     }
 
     [Fact]
@@ -167,7 +175,47 @@ public class SignaturePluginSettingsTests
         Assert.Equal(OverlayThemes.Default, config.OverlayTheme);
     }
 
+    [Fact]
+    public async Task Valid_position_apply_rebuilds_republishes_and_persists_the_position()
+    {
+        var (config, path) = TempConfig(OverlayThemes.Default);
+        var plugin = new SignaturePlugin(null, config, path);
+        var services = new FakePluginServices();
+
+        await plugin.OnApplySettings(ApplyPosition("bottomright"), services, default);
+
+        var rebuilt = Assert.IsType<SignaturePluginConfig>(Assert.Single(services.Rebuilt));
+        Assert.Equal(OverlayAnchor.BottomRight, Overlay(rebuilt).Anchor);
+        Assert.Equal("bottomright", PositionField(services).Value);
+
+        var reloaded = PluginConfig.Load<SignaturePluginConfig>(path);
+        Assert.Equal("bottomright", reloaded.Position);
+    }
+
+    [Fact]
+    public async Task Invalid_position_preserves_the_current_position_and_touches_nothing()
+    {
+        var (config, path) = TempConfig(OverlayThemes.Default);
+        var plugin = new SignaturePlugin(null, config, path);
+        var services = new FakePluginServices();
+
+        await plugin.OnApplySettings(ApplyPosition("offscreen"), services, default);
+
+        Assert.Empty(services.Rebuilt);
+        Assert.Empty(services.Published);
+        Assert.Equal(OverlayPositions.TopCenter, config.Position);
+        Assert.Contains(services.Logs, line => line.Contains("offscreen"));
+    }
+
     private static ApplySettings Apply(string theme) => new([new SettingsValue("overlayTheme", theme)]);
+
+    private static ApplySettings ApplyPosition(string position) => new([new SettingsValue("position", position)]);
+
+    private static SettingsField ThemeField(FakePluginServices services) =>
+        Assert.Single(services.Published).Fields.Single(field => field.Id == "overlayTheme");
+
+    private static SettingsField PositionField(FakePluginServices services) =>
+        Assert.Single(services.Published).Fields.Single(field => field.Id == "position");
 
     // The path string exactly as persisted on disk, before Load resolves it against the config dir —
     // so a test can prove Save wrote the relative spelling back rather than an absolute path.

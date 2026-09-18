@@ -44,11 +44,13 @@ public sealed class SignaturePlugin : IOcrxPlugin
     private const int ReconnectClearAttempt = 4;
 
     /// <summary>
-    /// The opaque id SignaturePlugin gives its one projected setting — the overlay theme. The engine
-    /// forwards it back untouched on a user edit and never learns what it means, which is exactly why
-    /// it can live entirely inside this plugin with no engine-side manifest or version gate.
+    /// The opaque ids SignaturePlugin gives its projected settings — the overlay theme and position.
+    /// The engine forwards each back untouched on a user edit and never learns what either means,
+    /// which is exactly why they can live entirely inside this plugin with no engine-side manifest or
+    /// version gate.
     /// </summary>
     private const string OverlayThemeSettingId = "overlayTheme";
+    private const string PositionSettingId = "position";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SignatureTable _table;
@@ -109,78 +111,112 @@ public sealed class SignaturePlugin : IOcrxPlugin
         => _config is null ? Task.CompletedTask : services.PublishSettingsAsync(BuildSpec(_config), ct);
 
     /// <summary>
-    /// Applies a user's overlay-theme edit entirely inside this process: validate the value against
-    /// <see cref="OverlayThemes"/>, rebuild the live overlay from a clean base, republish the effective
-    /// spec, and only then persist — so a failed rebuild leaves neither the running overlay nor
-    /// config.json ahead of the other. The engine is never asked to validate anything.
+    /// Applies a user's theme and/or position edit entirely inside this process: validate each value
+    /// against its own owner (<see cref="OverlayThemes"/>/<see cref="OverlayPositions"/>), rebuild the
+    /// live overlay from a clean base, republish the effective spec, and only then persist — so a
+    /// failed rebuild leaves neither the running overlay nor config.json ahead of the other. The
+    /// engine is never asked to validate anything.
     /// </summary>
     public async Task OnApplySettings(ApplySettings apply, IPluginServices services, CancellationToken ct)
     {
         if (_config is null || _configPath is null) return;
 
-        var edit = apply.Values.FirstOrDefault(value =>
+        var themeEdit = apply.Values.FirstOrDefault(value =>
             string.Equals(value.Id, OverlayThemeSettingId, StringComparison.Ordinal));
-        if (edit is null)
-            // No value for the one field this plugin owns — the engine forwarded an edit that is not
-            // ours. Nothing to do; never happens in practice but a no-op is the correct answer.
+        var positionEdit = apply.Values.FirstOrDefault(value =>
+            string.Equals(value.Id, PositionSettingId, StringComparison.Ordinal));
+        if (themeEdit is null && positionEdit is null)
+            // Neither id is one this plugin owns — the engine forwarded an edit that is not ours.
+            // Nothing to do; never happens in practice but a no-op is the correct answer.
             return;
 
         // A blank value is a malformed edit, not a pick from the SELECT: reject it rather than let
-        // Normalize silently read it as an intentional reset to 'default'. Every real choice the
-        // engine forwards is one of the option strings this plugin declared.
-        if (string.IsNullOrWhiteSpace(edit.Value) || !OverlayThemes.IsKnown(OverlayThemes.Normalize(edit.Value)))
+        // Normalize silently read it as an intentional reset to the default. Every real choice the
+        // engine forwards is one of the option strings this plugin declared. A rejected edit aborts
+        // the whole apply rather than falling back to the other field alone — the id is ours but the
+        // value is the user's, and the plugin, not the engine, is what rejected it.
+        var theme = OverlayThemes.Normalize(_config.OverlayTheme);
+        if (themeEdit is not null)
         {
-            // The id is ours but the value is the user's: a bad one preserves the current theme rather
-            // than tearing the overlay down, and the plugin — not the engine — is what rejected it.
-            services.Log($"SignaturePlugin: ignoring unknown overlay theme '{edit.Value}'.");
-            return;
+            if (string.IsNullOrWhiteSpace(themeEdit.Value) || !OverlayThemes.IsKnown(OverlayThemes.Normalize(themeEdit.Value)))
+            {
+                services.Log($"SignaturePlugin: ignoring unknown overlay theme '{themeEdit.Value}'.");
+                return;
+            }
+            theme = OverlayThemes.Normalize(themeEdit.Value);
         }
 
-        var theme = OverlayThemes.Normalize(edit.Value);
-        if (string.Equals(theme, OverlayThemes.Normalize(_config.OverlayTheme), StringComparison.Ordinal))
+        var position = OverlayPositions.Normalize(_config.Position);
+        if (positionEdit is not null)
         {
-            // Same theme already in effect. Republish so the panel reflects the current value, but do
-            // not rebuild — tearing down and re-drawing the overlay for a no-op change would flicker it.
+            if (string.IsNullOrWhiteSpace(positionEdit.Value) || !OverlayPositions.IsKnown(OverlayPositions.Normalize(positionEdit.Value)))
+            {
+                services.Log($"SignaturePlugin: ignoring unknown overlay position '{positionEdit.Value}'.");
+                return;
+            }
+            position = OverlayPositions.Normalize(positionEdit.Value);
+        }
+
+        var themeChanged = !string.Equals(theme, OverlayThemes.Normalize(_config.OverlayTheme), StringComparison.Ordinal);
+        var positionChanged = !string.Equals(position, OverlayPositions.Normalize(_config.Position), StringComparison.Ordinal);
+        if (!themeChanged && !positionChanged)
+        {
+            // Nothing actually changed — a same-value re-apply. Republish so the panel reflects the
+            // current value, but do not rebuild — tearing down and re-drawing the overlay for a no-op
+            // change would flicker it.
             await services.PublishSettingsAsync(BuildSpec(_config), ct);
             return;
         }
 
-        // Theme the derived overlay on a throwaway clone taken from the pristine base. _config's own
-        // Outputs stay the shipped default preset, so the next switch — including back to 'default' —
-        // always rebuilds from a clean overlay rather than from the last theme's mutated dimensions.
-        var themed = _config.CloneForSettings<SignaturePluginConfig>(_configPath);
-        themed.OverlayTheme = theme;
-        OverlayThemes.Apply(themed);
+        // Apply both settings on a throwaway clone taken from the pristine base. _config's own Outputs
+        // stay the shipped default preset, so the next apply — including one that only touches the
+        // other field — always rebuilds from a clean overlay rather than from the last apply's mutated
+        // dimensions.
+        var edited = _config.CloneForSettings<SignaturePluginConfig>(_configPath);
+        edited.OverlayTheme = theme;
+        edited.Position = position;
+        OverlayThemes.Apply(edited);
+        OverlayPositions.Apply(edited);
 
-        // Rebuild and republish against the themed clone *before* committing anything to _config, so a
-        // failure in either call leaves _config's in-memory theme and the on-disk file agreeing on the
-        // previous value rather than half-advanced. The one state this cannot hold is the live overlay:
+        // Rebuild and republish against the edited clone *before* committing anything to _config, so a
+        // failure in either call leaves _config's in-memory values and the on-disk file agreeing on the
+        // previous ones rather than half-advanced. The one state this cannot hold is the live overlay:
         // RebuildOutputsAsync swaps the running sinks first, so if PublishSettingsAsync then throws the
-        // overlay shows the new theme while config and the panel still read the old one. That heals on
-        // the next apply — _config.OverlayTheme is still the old value, so the change branch fires again
-        // — and undoing it would mean a rollback inside the host's rebuild, which is not worth it for a
+        // overlay shows the new values while config and the panel still read the old ones. That heals
+        // on the next apply — _config is still the old values, so a change branch fires again — and
+        // undoing it would mean a rollback inside the host's rebuild, which is not worth it for a
         // window this narrow.
-        await services.RebuildOutputsAsync(themed, ct);
-        await services.PublishSettingsAsync(BuildSpec(themed), ct);
+        await services.RebuildOutputsAsync(edited, ct);
+        await services.PublishSettingsAsync(BuildSpec(edited), ct);
 
         _config.OverlayTheme = theme;
+        _config.Position = position;
         _config.Save(_configPath);
     }
 
     /// <summary>
-    /// Builds the effective spec: one SELECT field whose options come straight from
-    /// <see cref="OverlayThemes.Options"/> so they cannot drift from what can actually be applied, and
-    /// whose value is the config's current theme in canonical form.
+    /// Builds the effective spec: two SELECT fields whose options come straight from
+    /// <see cref="OverlayThemes.Options"/>/<see cref="OverlayPositions.Options"/> so they cannot drift
+    /// from what can actually be applied, and whose values are the config's current theme and position
+    /// in canonical form.
     /// </summary>
     private static SettingsSpec BuildSpec(SignaturePluginConfig config) =>
         new([
             new SettingsField(
                 Id: OverlayThemeSettingId,
-                Label: "Overlay theme",
+                Label: "Theme",
                 Type: SettingsFieldType.Select,
                 Value: OverlayThemes.Normalize(config.OverlayTheme),
                 Help: "Visual preset for the on-screen signature overlay.",
                 Options: OverlayThemes.Options,
+                Group: "Overlay"),
+            new SettingsField(
+                Id: PositionSettingId,
+                Label: "Position",
+                Type: SettingsFieldType.Select,
+                Value: OverlayPositions.Normalize(config.Position),
+                Help: "Where the signature overlay appears on screen.",
+                Options: OverlayPositions.Options,
                 Group: "Overlay"),
         ]);
 
