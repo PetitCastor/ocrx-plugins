@@ -4,5 +4,5 @@
   "plugins": [
     "SignaturePlugin"
   ],
-  "notes": "SignaturePlugin v2.4.0 ships its settings schema so OCRX can render and queue the overlay-theme setting before the plugin first starts. Tested against OCRX engine v2.0.28."
+  "notes": "SignaturePlugin v2.4.0 ships its settings schema so OCRX can render and queue the overlay-theme setting before the plugin first starts. Tested against OCRX engine v2.0.29."
 }
