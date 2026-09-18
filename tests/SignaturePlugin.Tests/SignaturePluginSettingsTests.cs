@@ -207,9 +207,86 @@ public class SignaturePluginSettingsTests
         Assert.Contains(services.Logs, line => line.Contains("offscreen"));
     }
 
+    [Fact]
+    public async Task Both_fields_valid_in_one_batch_apply_together_and_rebuild_once()
+    {
+        var (config, path) = TempConfig(OverlayThemes.Default);
+        var plugin = new SignaturePlugin(null, config, path);
+        var services = new FakePluginServices();
+
+        await plugin.OnApplySettings(ApplyBoth(OverlayThemes.Citizen, "bottomright"), services, default);
+
+        var rebuilt = Assert.IsType<SignaturePluginConfig>(Assert.Single(services.Rebuilt));
+        Assert.Equal("Rajdhani SemiBold", Overlay(rebuilt).FontFamily);
+        Assert.Equal(OverlayAnchor.BottomRight, Overlay(rebuilt).Anchor);
+
+        Assert.Equal(OverlayThemes.Citizen, ThemeField(services).Value);
+        Assert.Equal("bottomright", PositionField(services).Value);
+
+        var reloaded = PluginConfig.Load<SignaturePluginConfig>(path);
+        Assert.Equal(OverlayThemes.Citizen, reloaded.OverlayTheme);
+        Assert.Equal("bottomright", reloaded.Position);
+    }
+
+    [Fact]
+    public async Task An_invalid_theme_alongside_a_valid_position_aborts_both_edits()
+    {
+        var (config, path) = TempConfig(OverlayThemes.Citizen);
+        var plugin = new SignaturePlugin(null, config, path);
+        var services = new FakePluginServices();
+
+        await plugin.OnApplySettings(ApplyBoth("neon", "bottomright"), services, default);
+
+        Assert.Empty(services.Rebuilt);
+        Assert.Empty(services.Published);
+        Assert.Equal(OverlayThemes.Citizen, config.OverlayTheme);
+        Assert.Equal(OverlayPositions.TopCenter, config.Position);
+        Assert.Contains(services.Logs, line => line.Contains("neon"));
+    }
+
+    [Fact]
+    public async Task A_valid_theme_alongside_an_invalid_position_aborts_both_edits()
+    {
+        var (config, path) = TempConfig(OverlayThemes.Citizen);
+        var plugin = new SignaturePlugin(null, config, path);
+        var services = new FakePluginServices();
+
+        await plugin.OnApplySettings(ApplyBoth(OverlayThemes.Retro, "offscreen"), services, default);
+
+        Assert.Empty(services.Rebuilt);
+        Assert.Empty(services.Published);
+        Assert.Equal(OverlayThemes.Citizen, config.OverlayTheme);
+        Assert.Equal(OverlayPositions.TopCenter, config.Position);
+        Assert.Contains(services.Logs, line => line.Contains("offscreen"));
+    }
+
+    [Fact]
+    public async Task Position_only_apply_preserves_the_current_nondefault_theme_preset()
+    {
+        var (config, path) = TempConfig(OverlayThemes.Citizen);
+        var plugin = new SignaturePlugin(null, config, path);
+        var services = new FakePluginServices();
+
+        await plugin.OnApplySettings(ApplyPosition("bottomright"), services, default);
+
+        var rebuilt = Assert.IsType<SignaturePluginConfig>(Assert.Single(services.Rebuilt));
+        // The theme preset (font/size/colours) survives a position-only change...
+        Assert.Equal("Rajdhani SemiBold", Overlay(rebuilt).FontFamily);
+        Assert.Equal(76, Overlay(rebuilt).Height);
+        // ...while the anchor moves to the newly applied position.
+        Assert.Equal(OverlayAnchor.BottomRight, Overlay(rebuilt).Anchor);
+
+        var reloaded = PluginConfig.Load<SignaturePluginConfig>(path);
+        Assert.Equal(OverlayThemes.Citizen, reloaded.OverlayTheme);
+        Assert.Equal("bottomright", reloaded.Position);
+    }
+
     private static ApplySettings Apply(string theme) => new([new SettingsValue("overlayTheme", theme)]);
 
     private static ApplySettings ApplyPosition(string position) => new([new SettingsValue("position", position)]);
+
+    private static ApplySettings ApplyBoth(string theme, string position) =>
+        new([new SettingsValue("overlayTheme", theme), new SettingsValue("position", position)]);
 
     private static SettingsField ThemeField(FakePluginServices services) =>
         Assert.Single(services.Published).Fields.Single(field => field.Id == "overlayTheme");
