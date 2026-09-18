@@ -207,7 +207,6 @@ public sealed class SignaturePlugin : IOcrxPlugin
                 Label: "Theme",
                 Type: SettingsFieldType.Select,
                 Value: OverlayThemes.Normalize(config.OverlayTheme),
-                Help: "Visual preset for the on-screen signature overlay.",
                 Options: OverlayThemes.Options,
                 Group: "Overlay"),
             new SettingsField(
@@ -215,7 +214,6 @@ public sealed class SignaturePlugin : IOcrxPlugin
                 Label: "Position",
                 Type: SettingsFieldType.Select,
                 Value: OverlayPositions.Normalize(config.Position),
-                Help: "Where the signature overlay appears on screen.",
                 Options: OverlayPositions.Options,
                 Group: "Overlay"),
         ]);
