@@ -4,5 +4,5 @@
   "plugins": [
     "SignaturePlugin"
   ],
-  "notes": "SignaturePlugin v2.6.1 release, packaged by the automated release pipeline."
+  "notes": "SignaturePlugin v2.6.1 is a maintenance release that preserves existing behavior and is packaged by the automated release pipeline."
 }

@@ -60,7 +60,7 @@ jobs:
             exit 0
           }
 
-          $tags = $added | ForEach-Object { [System.IO.Path]::GetFileNameWithoutExtension($_) } | Sort-Object -Unique
+          $tags = @($added | ForEach-Object { [System.IO.Path]::GetFileNameWithoutExtension($_) } | Sort-Object -Unique)
           if ($tags.Count -ne 1) {
             throw "Expected exactly one release descriptor per merge, found $($tags.Count): $($tags -join ', '). Split into separate release PRs."
           }
