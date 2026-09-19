@@ -52,7 +52,7 @@ jobs:
             exit 0
           }
 
-          $added = git diff --diff-filter=AM --name-only $env:BEFORE_SHA $env:GITHUB_SHA -- '.github/release-manifests/*.json'
+          $added = git diff --no-renames --diff-filter=AM --name-only $env:BEFORE_SHA $env:GITHUB_SHA -- '.github/release-manifests/*.json'
           $added = @($added | Where-Object { $_ })
           if ($added.Count -eq 0) {
             Write-Host "No release descriptor was added or changed by this push — skipping."
@@ -87,7 +87,6 @@ jobs:
         run: |
           .\scripts\Test-ReleaseDescriptor.ps1 -Tag $env:TAG
           $manifest = Get-Content ".github/release-manifests/$env:TAG.json" -Raw | ConvertFrom-Json
-          if ($manifest.tag -ne $env:TAG) { throw "Descriptor at $env:TAG.json declares tag '$($manifest.tag)', which does not match its own filename." }
           # The step below reads this as a string and compares it to 'true', so emit the word
           # rather than casting the comparison: a PowerShell cast binds looser than a method call,
           # so [string](...).ToLowerInvariant() called ToLowerInvariant on the Boolean itself and
