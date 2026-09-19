@@ -281,6 +281,29 @@ public class SignaturePluginSettingsTests
         Assert.Equal("bottomright", reloaded.Position);
     }
 
+    [Fact]
+    public async Task Apply_forces_the_overlay_to_redraw_even_when_the_reading_is_unchanged()
+    {
+        var (config, path) = TempConfig(OverlayThemes.Default);
+        var plugin = new SignaturePlugin(null, config, path);
+        var services = new FakePluginServices();
+
+        await plugin.OnTickAsync(Tick("3600", services), default);
+        Assert.Single(services.Emitted);
+
+        await plugin.OnApplySettings(Apply(OverlayThemes.Citizen), services, default);
+
+        // Same signature as before the apply. Without clearing the dedupe cache after the rebuild,
+        // EmitObservation would see it as unchanged and skip emitting — leaving the freshly rebuilt
+        // overlay window blank, since it never received its first Show() call.
+        await plugin.OnTickAsync(Tick("3600", services), default);
+
+        Assert.Equal(2, services.Emitted.Count);
+    }
+
+    private static TickContext Tick(string counterText, FakePluginServices services) =>
+        TickContext.ForTesting(new TickDataBuilder().Text("counter", counterText).Build(), services);
+
     private static ApplySettings Apply(string theme) => new([new SettingsValue("overlayTheme", theme)]);
 
     private static ApplySettings ApplyPosition(string position) => new([new SettingsValue("position", position)]);
