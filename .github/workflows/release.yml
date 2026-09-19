@@ -68,8 +68,16 @@ jobs:
 
           # Idempotency: a re-run (manual re-trigger, or a workflow retry) must not try to create a
           # release that already exists, since gh release create would simply fail on it.
+          # A missing tag is the normal case for a new release.  GitHub Actions runs
+          # PowerShell with ErrorActionPreference=Stop, so allow gh's expected non-zero
+          # result through, record it, and clear the native exit code before this step ends.
+          $previousErrorActionPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
           gh release view $tag --json tagName *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $releaseExists = $LASTEXITCODE -eq 0
+          $global:LASTEXITCODE = 0
+          $ErrorActionPreference = $previousErrorActionPreference
+          if ($releaseExists) {
             Write-Host "Release $tag already exists — skipping."
             "skip=true" >> $env:GITHUB_OUTPUT
             exit 0
