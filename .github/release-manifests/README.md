@@ -1,8 +1,10 @@
 # Release descriptors
 
 Each public plugin release has one committed descriptor named `<tag>.json`. Create it in the
-release PR, merge the PR, then create the matching tag from the merged commit. The release workflow
-refuses to run without this file or when its tag/channel/plugin selection does not match the ref.
+release PR and merge the PR — the Release workflow triggers on that push to `master`, resolves the
+tag from the descriptor the merge added, and creates the GitHub release (and its tag) itself. No
+separate tagging step. The workflow refuses to run without a matching file, when a merge adds more
+than one descriptor, or when the descriptor's own `tag` field disagrees with its filename.
 
 ```json
 {
