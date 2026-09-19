@@ -187,6 +187,14 @@ public sealed class SignaturePlugin : IOcrxPlugin
         // undoing it would mean a rollback inside the host's rebuild, which is not worth it for a
         // window this narrow.
         await services.RebuildOutputsAsync(edited, ct);
+
+        // The rebuild just swapped in a fresh, not-yet-shown overlay window. Auto ticks only emit on a
+        // changed reading (see EmitObservation's dedupe against _lastObservation), so without this the
+        // new window would stay blank until the on-screen signature actually changed — the overlay
+        // would look like it vanished for as long as the same ore sat on screen. Clearing the cache
+        // forces the very next tick's reading through even if it is identical to the last one shown.
+        _lastObservation = null;
+
         await services.PublishSettingsAsync(BuildSpec(edited), ct);
 
         _config.OverlayTheme = theme;
