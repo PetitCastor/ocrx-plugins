@@ -1,0 +1,8 @@
+{
+  "tag": "v2.6.1",
+  "channel": "stable",
+  "plugins": [
+    "SignaturePlugin"
+  ],
+  "notes": "SignaturePlugin v2.6.1 release."
+}
