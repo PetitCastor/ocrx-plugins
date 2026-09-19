@@ -2,12 +2,17 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    branches: [master]
+    paths:
+      - '.github/release-manifests/*.json'
 
-# Releases are deliberately tag-triggered. A merged pull request is buildable source, not a public
-# promise: a maintainer creates a validated tag only after the release PR has landed on master.
+# Releases are triggered by the merge itself: a release PR adds .github/release-manifests/<tag>.json,
+# and landing it on master is what cuts the tag and the GitHub release — no separate tagging step, so
+# no throwaway branch/commit/tag to create just to point CI at a commit that already exists. Grouped
+# on the commit rather than a tag name (which is not known until the descriptor step below resolves
+# it) so two release PRs merged back-to-back cannot cancel each other's build.
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -17,30 +22,71 @@ jobs:
     permissions:
       contents: read
     outputs:
-      tag: ${{ steps.release.outputs.tag }}
+      tag: ${{ steps.descriptor.outputs.tag }}
+      skip: ${{ steps.descriptor.outputs.skip }}
       prerelease: ${{ steps.release.outputs.prerelease }}
     steps:
-      - name: Checkout tagged source
+      - name: Checkout merged source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify tag is merged to master
+      # A release manifest is what makes this push a release, not merely a push that touched the
+      # release-manifests folder: a PR that only edits an existing descriptor (a typo fix before its
+      # tag ever shipped) has nothing new to release, and github.event.before is the all-zeros SHA on
+      # a branch's first push, so there is nothing to diff against. Both cases skip the run rather
+      # than fail it — this workflow's paths filter already limits it to pushes that plausibly mean
+      # to ship something, and a plain skip keeps a "checks passed" branch protection rule from
+      # blocking on a run that had genuinely nothing to do.
+      - name: Resolve the merged release descriptor
+        id: descriptor
         shell: pwsh
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git fetch origin master:refs/remotes/origin/master --no-tags
-          git merge-base --is-ancestor HEAD origin/master
-          if ($LASTEXITCODE -ne 0) { throw "Release tag $env:GITHUB_REF_NAME is not reachable from master." }
+          if ($env:BEFORE_SHA -match '^0+$') {
+            Write-Host "No previous commit to diff (first push on this ref) — skipping."
+            "skip=true" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          $added = git diff --no-renames --diff-filter=AM --name-only $env:BEFORE_SHA $env:GITHUB_SHA -- '.github/release-manifests/*.json'
+          $added = @($added | Where-Object { $_ })
+          if ($added.Count -eq 0) {
+            Write-Host "No release descriptor was added or changed by this push — skipping."
+            "skip=true" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          $tags = $added | ForEach-Object { [System.IO.Path]::GetFileNameWithoutExtension($_) } | Sort-Object -Unique
+          if ($tags.Count -ne 1) {
+            throw "Expected exactly one release descriptor per merge, found $($tags.Count): $($tags -join ', '). Split into separate release PRs."
+          }
+          $tag = $tags[0]
+
+          # Idempotency: a re-run (manual re-trigger, or a workflow retry) must not try to create a
+          # release that already exists, since gh release create would simply fail on it.
+          gh release view $tag --json tagName *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists — skipping."
+            "skip=true" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          "skip=false" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
 
       - name: Validate release descriptor
         id: release
+        if: steps.descriptor.outputs.skip != 'true'
         shell: pwsh
+        env:
+          TAG: ${{ steps.descriptor.outputs.tag }}
         run: |
-          .\scripts\Test-ReleaseDescriptor.ps1 -Tag $env:GITHUB_REF_NAME
-          $manifest = Get-Content ".github/release-manifests/$env:GITHUB_REF_NAME.json" -Raw | ConvertFrom-Json
-          "tag=$($manifest.tag)" >> $env:GITHUB_OUTPUT
+          .\scripts\Test-ReleaseDescriptor.ps1 -Tag $env:TAG
+          $manifest = Get-Content ".github/release-manifests/$env:TAG.json" -Raw | ConvertFrom-Json
           # The step below reads this as a string and compares it to 'true', so emit the word
           # rather than casting the comparison: a PowerShell cast binds looser than a method call,
           # so [string](...).ToLowerInvariant() called ToLowerInvariant on the Boolean itself and
@@ -50,6 +96,7 @@ jobs:
 
       - name: Read pinned engine version
         id: engine_version
+        if: steps.descriptor.outputs.skip != 'true'
         shell: pwsh
         run: |
           $engineVersion = (Get-Content engine-version.txt).Trim()
@@ -57,11 +104,13 @@ jobs:
           "version=$engineVersion" >> $env:GITHUB_OUTPUT
 
       - name: Setup .NET
+        if: steps.descriptor.outputs.skip != 'true'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
       - name: Download pinned engine release
+        if: steps.descriptor.outputs.skip != 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -74,15 +123,19 @@ jobs:
           "OCRX_ENGINE_PATH=$enginePath" >> $env:GITHUB_ENV
 
       - name: Restore
+        if: steps.descriptor.outputs.skip != 'true'
         run: dotnet restore OcrxPlugins.slnx
 
       - name: Build
+        if: steps.descriptor.outputs.skip != 'true'
         run: dotnet build OcrxPlugins.slnx --no-restore -c Release
 
       - name: Test
+        if: steps.descriptor.outputs.skip != 'true'
         run: dotnet test OcrxPlugins.slnx --no-build -c Release --verbosity normal -m:1
 
       - name: Plugin boundary grep gate
+        if: steps.descriptor.outputs.skip != 'true'
         shell: bash
         run: |
           if rg -n -g '*.cs' "using Grpc|RpcException|Ocrx\.Contracts\.Proto|Ocrx\.Engine" src/; then
@@ -91,6 +144,7 @@ jobs:
           fi
 
       - name: Publish selected plugins
+        if: steps.descriptor.outputs.skip != 'true'
         shell: pwsh
         run: |
           . ./scripts/ReleaseDescriptor.Validate.ps1
@@ -111,11 +165,13 @@ jobs:
           $archives | Set-Content -Encoding utf8 release-assets.txt
 
       - name: Write release notes
+        if: steps.descriptor.outputs.skip != 'true'
         shell: pwsh
         env:
+          TAG: ${{ steps.descriptor.outputs.tag }}
           ENGINE_VERSION: ${{ steps.engine_version.outputs.version }}
         run: |
-          $manifest = Get-Content ".github/release-manifests/$env:GITHUB_REF_NAME.json" -Raw | ConvertFrom-Json
+          $manifest = Get-Content ".github/release-manifests/$env:TAG.json" -Raw | ConvertFrom-Json
           @"
           Tested against OCRX engine $env:ENGINE_VERSION (pinned in engine-version.txt).
 
@@ -123,9 +179,10 @@ jobs:
           "@ | Out-File -Encoding utf8 release-notes.md
 
       - name: Upload release payload
+        if: steps.descriptor.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: release-payload-${{ github.ref_name }}
+          name: release-payload-${{ steps.descriptor.outputs.tag }}
           path: |
             release-assets/*-win-x64.zip
             release-assets.txt
@@ -137,13 +194,14 @@ jobs:
     name: Create Release
     runs-on: windows-latest
     needs: build
+    if: needs.build.outputs.skip != 'true'
     permissions:
       contents: write
     steps:
       - name: Download release payload
         uses: actions/download-artifact@v4
         with:
-          name: release-payload-${{ github.ref_name }}
+          name: release-payload-${{ needs.build.outputs.tag }}
           path: release-payload
 
       - name: Create GitHub release

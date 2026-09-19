@@ -9,17 +9,19 @@ and CI in the same PR.
 
 ## Prepare and publish a release
 
-1. Add `.github/release-manifests/<tag>.json` in the release PR. Its tag, channel, selected plugins,
-   and non-empty release notes are validated by CI when the tag is pushed.
-2. Merge the PR into `master`.
-3. Create the descriptor's exact tag on the merged commit. Tags, not pull-request merges, create
-   GitHub releases. Stable tags are `v1.2.3`; preview tags name the plugin and the stage, as in
-   `v1.2.4-signature-alpha.1` or `v1.2.4-signature-beta.2`.
-4. After a successful **stable** release, send a follow-up catalog PR that changes only that
+1. Add `.github/release-manifests/<tag>.json` in the release PR. Stable tags are `v1.2.3`; preview
+   tags name the plugin and the stage, as in `v1.2.4-signature-alpha.1` or `v1.2.4-signature-beta.2`.
+2. Merge the PR into `master`. The merge itself is what ships the release: the Release workflow
+   triggers on the push to `master`, resolves the tag from whichever descriptor the merge added,
+   validates it, builds and publishes the selected plugin(s), and creates the GitHub release —
+   `gh release create` cuts the tag on the merge commit as part of creating the release, so there is
+   no separate tagging step and nothing to push by hand. A PR that only edits an existing descriptor
+   (not adding a new one) does not trigger a release.
+3. After a successful **stable** release, send a follow-up catalog PR that changes only that
    plugin's versioned URL in `plugins.json`. Do not use `releases/latest`: it is repository-wide,
    not plugin-wide. Preview releases belong in `plugins.preview.json` only after an engine version
    that supports the opt-in preview catalog has shipped.
-5. Every `plugins.preview.json` entry must set `"channel": "preview"` explicitly, and its
+4. Every `plugins.preview.json` entry must set `"channel": "preview"` explicitly, and its
    `downloadUrl` must pin the exact release tag — previews have no `releases/latest` alias. An entry
    missing `channel` (or carrying the wrong value) is not merely dropped: the engine's
    `PluginCatalog.TryParse` rejects the entire preview catalog for every user, so no preview shows
