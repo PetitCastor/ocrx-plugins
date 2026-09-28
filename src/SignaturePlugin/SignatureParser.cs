@@ -15,12 +15,23 @@ public static partial class SignatureParser
     /// being read as some other number.
     /// </summary>
     /// <remarks>
-    /// This is the first OCR fold this parser has taken, and it is here because a corpus proved it,
-    /// not on suspicion. Other confusions in the same capture (<c>21k25</c>, <c>u".</c>) are left to
+    /// This was the first OCR fold this parser took (<see cref="PeriodGroupedToken"/> is the second),
+    /// and each is here because a capture proved it, not on suspicion. Other confusions in the same capture (<c>21k25</c>, <c>u".</c>) are left to
     /// fail as unreadable: they are rarer, and folding them would guess at digits rather than at a
     /// separator.
     /// </remarks>
     private const char CommaLookalike = '/';
+
+    /// <summary>
+    /// The same comma read as a period: <c>2,000</c> came back as <c>2.000</c> on 2026-09-28 captures
+    /// at 1920x1200 and on a 1080p frame, which parses as 2 — a clean number, no cluster, and exactly
+    /// the kind of plausible wrong value the consensus then defends. A token made only of 1-3 digits
+    /// followed by period-and-three-digit groups is read as thousands, because an RS signature is a
+    /// whole number of at least 3170: no real reading has a three-decimal fraction. Anything else
+    /// with a period (<c>1620.75</c>, <c>1,620.5</c>) keeps the invariant decimal point.
+    /// </summary>
+    [GeneratedRegex(@"^[+-]?\d{1,3}(?:\.\d{3})+$")]
+    private static partial Regex PeriodGroupedToken();
 
     // The OCR region may include a label or a unit. Commas and spaces are accepted as thousands
     // separators; the decimal separator is deliberately invariant-culture '.'.
@@ -47,6 +58,9 @@ public static partial class SignatureParser
             return false;
 
         var token = match.Groups["number"].Value;
+        if (PeriodGroupedToken().IsMatch(token))
+            token = token.Replace('.', ',');
+
         if (!ValidNumberToken().IsMatch(token))
             return false;
 
