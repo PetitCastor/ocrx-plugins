@@ -6,6 +6,6 @@
       "executables": ["StarCitizen.exe"],
       "titlePatterns": ["Star Citizen"]
     },
-    "reference": { "width": 2560, "height": 1440 }
+    "reference": { "width": 2560, "height": 1440, "scaleMode": "height" }
   }
 ]
