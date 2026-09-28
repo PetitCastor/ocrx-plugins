@@ -1,5 +1,20 @@
 {
   "frames": [
-    { "file": "frame_20260823_164053_757.png", "name": "Lindinium", "kind": "ore", "signature": 3400, "count": 1 }
+    { "file": "frame_20260823_164053_757.png", "name": "Lindinium", "kind": "ore", "signature": 3400, "count": 1 },
+    {
+      "file": "frame_20260928_135419_421_windowed-2560x1440.png",
+      "signature": 2000,
+      "note": "Windowed 2560x1440, cropped to the client area as engine v2.0.39 captures it (the raw capture was 2562x1472 with the title bar)."
+    },
+    {
+      "file": "frame_20260928_141822_655_windowed-1600x1200.png",
+      "signature": 2000,
+      "note": "Windowed 1600x1200 client area. Taller than 16:9: reads only with games.json scaleMode height; fit places the ROI ~45 px below the badge."
+    },
+    {
+      "file": "frame_20260928_141610_032_borderless-1920x1200.png",
+      "signature": 2000,
+      "note": "Borderless at 1920x1200 on a 2560x1440 screen: the game upscales x1.2 and pillarboxes itself. OCR reads the comma as a period ('2.000')."
+    }
   ]
 }
