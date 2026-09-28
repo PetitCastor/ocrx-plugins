@@ -12,7 +12,8 @@ $ErrorActionPreference = 'Stop'
 # carry "channel": "preview" explicitly. plugins.json entries must omit "channel" or say "stable".
 #
 # Also validates games.json against the shape ocrx-engine's GameCatalog.IsUsable enforces (id,
-# name, a reference with positive width/height, and at least one non-blank windowMatch rule), and
+# name, a reference with positive width/height and an optional scaleMode of "fit" or "height", and
+# at least one non-blank windowMatch rule), and
 # that every plugin catalog entry's optional "game" field names an id that actually exists there —
 # a dangling id degrades silently to RoiReference.Default in the engine, so this is the one place
 # that catches the typo before it ships.
@@ -104,6 +105,13 @@ function Test-GamesCatalogFile {
 
         if ($null -eq $entry.reference -or $entry.reference.width -le 0 -or $entry.reference.height -le 0) {
             throw "$($Path): entry '$($entry.id)' needs a reference width/height > 0."
+        }
+
+        # The engine reads any other scaleMode as "fit" without complaint, so a typo here would
+        # quietly turn a height-scaled game back into a letterboxed one on 16:10 and 4:3 screens.
+        $scaleMode = $entry.reference.scaleMode
+        if ($null -ne $scaleMode -and $scaleMode -cnotin @('fit', 'height')) {
+            throw "$($Path): entry '$($entry.id)' has reference.scaleMode '$scaleMode'; expected 'fit' or 'height'."
         }
 
         $executables = if ($null -eq $entry.windowMatch.executables) { @() } else { @($entry.windowMatch.executables) }
