@@ -37,6 +37,31 @@ public class SignatureParserTests
         Assert.Equal(expected, signature);
     }
 
+    // The comma read as a period: "2.000" is what Windows OCR returned for 2,000 on the 2026-09-28
+    // 1920x1200 capture and a 1080p frame. It used to parse as 2.
+    [Theory]
+    [InlineData("2.000", 2000.0)]
+    [InlineData("11.565", 11565.0)]
+    [InlineData("3.400", 3400.0)]
+    [InlineData("1.234.567", 1234567.0)]
+    [InlineData("- 21.425", 21425.0)]
+    public void TryParse_ReadsAPeriodBeforeThreeDigitsAsAThousandsSeparator(string ocrText, double expected)
+    {
+        Assert.True(SignatureParser.TryParse(ocrText, out var signature));
+        Assert.Equal(expected, signature);
+    }
+
+    [Theory]
+    [InlineData("1620.75", 1620.75)] // two decimals: still a fraction
+    [InlineData("3.4", 3.4)]
+    [InlineData("1,620.500", 1620.5)] // a comma already groups the thousands, so the period is decimal
+    [InlineData("1234.567", 1234.567)] // four digits before the period cannot be a thousands group
+    public void TryParse_KeepsADecimalPointThatIsNotAThousandsGroup(string ocrText, double expected)
+    {
+        Assert.True(SignatureParser.TryParse(ocrText, out var signature));
+        Assert.Equal(expected, signature);
+    }
+
     /// <summary>
     /// The regression this parser exists to prevent. A token that leaves digits behind is a
     /// truncation, and returning the prefix is far worse than returning nothing: <c>21/425</c> used to

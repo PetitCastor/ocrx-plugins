@@ -41,6 +41,12 @@ public class ReplayParityTests
             var oneFrameCorpus = CreateOneFrameCorpus(corpusDir, expected.File);
             try
             {
+                if (expected.Name is null)
+                {
+                    await AssertCounterReadsSignature(oneFrameCorpus, expected.File, expected.Signature!.Value);
+                    continue;
+                }
+
                 var result = await ReplayHarness.RunAsync(new ReplayOptions
                 {
                     EnginePath = EngineLocator.Resolve(),
@@ -77,7 +83,31 @@ public class ReplayParityTests
         }
     }
 
-    private static IReadOnlyList<(string File, string Name, string Kind, double? Signature, int? Count)> ReadManifest(string path)
+    /// <summary>
+    /// A frame whose value names no ore — the 2026-09-28 resolution captures read 2,000 — cannot
+    /// produce a plugin observation, so it pins the step before matching instead: the counter ROI,
+    /// placed by the engine for this frame's size and the game's scale mode, has to OCR to text the
+    /// plugin's own parser reads as the manifest's signature. Needs the published games.json
+    /// (star-citizen, scaleMode "height") for the frames taller than 16:9.
+    /// </summary>
+    private static async Task AssertCounterReadsSignature(string corpus, string file, double signature)
+    {
+        var result = await ReplayHarness.RunAsync(new ReplayOptions
+        {
+            EnginePath = EngineLocator.Resolve(),
+            CorpusDir = corpus,
+            Plugin = new CounterReadingProbe(),
+        });
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(StreamEndReason.ReplayCompleted, result.Reason);
+
+        var raw = Assert.Single(result.Records).RawText;
+        Assert.True(SignatureParser.TryParse(raw, out var read), $"{file}: counter OCR '{raw}' is not a number");
+        Assert.True(signature == read, $"{file}: counter OCR '{raw}' parsed as {read}, expected {signature}");
+    }
+
+    private static IReadOnlyList<(string File, string? Name, string? Kind, double? Signature, int? Count)> ReadManifest(string path)
     {
         Assert.True(File.Exists(path), $"manifest not copied to the test output: {path}");
 
@@ -87,20 +117,28 @@ public class ReplayParityTests
             frames.ValueKind == JsonValueKind.Array,
             "manifest must contain a 'frames' array");
 
-        var expected = new List<(string File, string Name, string Kind, double? Signature, int? Count)>();
+        var expected = new List<(string File, string? Name, string? Kind, double? Signature, int? Count)>();
         foreach (var frame in frames.EnumerateArray())
         {
             var file = frame.GetProperty("file").GetString() ?? string.Empty;
-            var name = frame.GetProperty("name").GetString() ?? string.Empty;
-            var kind = frame.GetProperty("kind").GetString() ?? string.Empty;
+            var name = frame.TryGetProperty("name", out var nameElement) ? nameElement.GetString() : null;
+            var kind = frame.TryGetProperty("kind", out var kindElement) ? kindElement.GetString() : null;
             double? signature = frame.TryGetProperty("signature", out var signatureElement)
                 ? signatureElement.GetDouble() : null;
             int? count = frame.TryGetProperty("count", out var countElement)
                 ? countElement.GetInt32() : null;
 
             Assert.False(string.IsNullOrWhiteSpace(file), "manifest frame file is required");
-            Assert.False(string.IsNullOrWhiteSpace(name), "manifest frame name is required");
-            Assert.False(string.IsNullOrWhiteSpace(kind), "manifest frame kind is required");
+            // Either an ore observation (name and kind) or a bare reading (signature alone).
+            if (name is null && kind is null)
+            {
+                Assert.True(signature is not null, $"{file}: a frame without name/kind needs a signature");
+            }
+            else
+            {
+                Assert.False(string.IsNullOrWhiteSpace(name), $"{file}: manifest frame name is required with kind");
+                Assert.False(string.IsNullOrWhiteSpace(kind), $"{file}: manifest frame kind is required with name");
+            }
 
             expected.Add((file, name, kind, signature, count));
         }
@@ -110,7 +148,7 @@ public class ReplayParityTests
 
     private static void AssertManifestLabelsEveryPng(
         string corpusDir,
-        IReadOnlyList<(string File, string Name, string Kind, double? Signature, int? Count)> frames)
+        IReadOnlyList<(string File, string? Name, string? Kind, double? Signature, int? Count)> frames)
     {
         var manifestFiles = frames
             .Select(f => NormalizeManifestPath(f.File))
