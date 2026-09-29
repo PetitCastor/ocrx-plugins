@@ -14,6 +14,7 @@ public class StarCitizenFovZoomTests
     [InlineData(double.NaN)]
     [InlineData(0.0)]
     [InlineData(-5.0)]
+    [InlineData(150.0)]
     [InlineData(200.0)]
     public void Unusable_fov_keeps_the_calibrated_rect(double? fov)
         => Assert.Equal(1.0, StarCitizenFovZoom.Factor(fov));
@@ -69,8 +70,16 @@ public class StarCitizenFovZoomTests
     [Fact]
     public void The_zoom_is_about_screen_centre()
     {
+        var roi = Rois.Counter with { Rect = new RoiRect(1270, 710, 20, 20) };
+
+        Assert.Equal(new RoiRect(1275, 715, 10, 10), StarCitizenFovZoom.Apply(roi, 0.5).Rect);
+    }
+
+    [Fact]
+    public void A_rect_never_collapses_to_zero_size()
+    {
         var roi = Rois.Counter with { Rect = new RoiRect(1280, 720, 0, 0) };
 
-        Assert.Equal(new RoiRect(1280, 720, 0, 0), StarCitizenFovZoom.Apply(roi, 0.5).Rect);
+        Assert.Equal(new RoiRect(1280, 720, 1, 1), StarCitizenFovZoom.Apply(roi, 0.5).Rect);
     }
 }

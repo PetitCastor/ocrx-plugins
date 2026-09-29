@@ -29,23 +29,29 @@ internal static class StarCitizenInstall
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool QueryFullProcessImageNameW(IntPtr process, uint flags, StringBuilder name, ref int size);
 
-    /// <summary>The running game's attributes.xml, or null when the game is not running or the file
-    /// is not where it should be.</summary>
-    public static string? FindAttributesFile()
+    /// <summary>Every running game's attributes.xml, ordered by path so the answer is stable when
+    /// two channels run at once; empty when the game is not running.</summary>
+    public static IReadOnlyList<string> FindAttributesFiles()
     {
         if (!OperatingSystem.IsWindows())
-            return null;
+            return [];
 
-        foreach (var process in Process.GetProcessesByName(ProcessName))
+        var processes = Process.GetProcessesByName(ProcessName);
+        try
         {
-            using (process)
-            {
-                if (ImagePath((uint)process.Id) is { } exe && AttributesFileFor(exe) is { } file && File.Exists(file))
-                    return file;
-            }
+            return processes
+                .Select(process => ImagePath((uint)process.Id) is { } exe ? AttributesFileFor(exe) : null)
+                .OfType<string>()
+                .Where(File.Exists)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Order(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
-
-        return null;
+        finally
+        {
+            foreach (var process in processes)
+                process.Dispose();
+        }
     }
 
     /// <summary>Where attributes.xml lives for a given <c>StarCitizen.exe</c> path.</summary>

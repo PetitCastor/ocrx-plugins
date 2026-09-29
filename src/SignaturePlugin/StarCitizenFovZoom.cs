@@ -31,6 +31,10 @@ internal static class StarCitizenFovZoom
     /// <summary>The smallest vertical FOV, in degrees, the game actually renders with.</summary>
     public const double FloorDegrees = 60.3;
 
+    /// <summary>The widest stored vertical FOV taken at face value. The slider tops out at 116,
+    /// stored as about 84°; anything past this is a corrupt or hand-edited file, not a setting.</summary>
+    public const double CeilingDegrees = 120;
+
     /// <summary>Cap on the compensated OCR scale; the engine clamps further for Windows OCR's
     /// maximum dimension, so this only keeps a nonsense FOV from asking for an absurd upscale.</summary>
     public const double MaxOcrScale = 12.0;
@@ -43,11 +47,12 @@ internal static class StarCitizenFovZoom
     /// <summary>
     /// The zoom factor for a stored vertical FOV: 1 at or below the floor, shrinking as the FOV
     /// widens. Null, non-finite or out-of-range input answers 1 — the calibrated rect — rather than
-    /// guessing.
+    /// guessing. At or below the floor the answer is exactly 1.0 (the same expression divided by
+    /// itself), which <see cref="Apply"/> relies on to hand back the calibrated subscription as is.
     /// </summary>
     public static double Factor(double? verticalFovDegrees)
     {
-        if (verticalFovDegrees is not { } fov || !double.IsFinite(fov) || fov <= 0 || fov >= 179)
+        if (verticalFovDegrees is not { } fov || !double.IsFinite(fov) || fov <= 0 || fov > CeilingDegrees)
             return 1.0;
 
         var effective = Math.Max(fov, FloorDegrees);
@@ -69,7 +74,10 @@ internal static class StarCitizenFovZoom
         var top = Math.Round(CentreY + (r.Y - CentreY) * factor);
         var right = Math.Round(CentreX + (r.X + r.Width - CentreX) * factor);
         var bottom = Math.Round(CentreY + (r.Y + r.Height - CentreY) * factor);
-        var rect = new RoiRect((uint)left, (uint)top, (uint)(right - left), (uint)(bottom - top));
+        // factor <= 1 keeps every edge between its calibrated position and the centre, so nothing
+        // goes negative; the 1 px floor only guards a zero-size rect the engine would reject.
+        var rect = new RoiRect((uint)left, (uint)top,
+            (uint)Math.Max(1, right - left), (uint)Math.Max(1, bottom - top));
 
         return roi with { Rect = rect, Scale = Math.Min(roi.Scale / factor, MaxOcrScale) };
     }
