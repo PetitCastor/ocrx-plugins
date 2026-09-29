@@ -6,7 +6,13 @@
   <Folder Name="/src/">
     <Project Path="src/SignaturePlugin/SignaturePlugin.csproj" />
   </Folder>
+  <!-- tools/SignatureOcrSweep is the SignaturePlugin counter-OCR sweep console (TASK-SIG-OCR-00). It is
+       in the solution so it keeps compiling against every SDK bump; its tests need no OCR language pack. -->
+  <Folder Name="/tools/">
+    <Project Path="tools/SignatureOcrSweep/SignatureOcrSweep.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SignaturePlugin.Tests/SignaturePlugin.Tests.csproj" />
+    <Project Path="tests/SignatureOcrSweep.Tests/SignatureOcrSweep.Tests.csproj" />
   </Folder>
 </Solution>
