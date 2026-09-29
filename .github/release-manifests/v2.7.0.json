@@ -1,0 +1,8 @@
+{
+  "tag": "v2.7.0",
+  "channel": "stable",
+  "plugins": [
+    "SignaturePlugin"
+  ],
+  "notes": "SignaturePlugin v2.7.0 follows Star Citizen's field-of-view slider. The FOV zooms the HUD about screen centre, so above a slider of about 92 the RS signature badge moved out of the counter region. The plugin now reads the FOV from the running game's profile, moves and rescales the region to match, and updates it live when the setting changes, with no restart. Built on Ocrx.Sdk 2.7.0; tested against engine v2.0.39."
+}
