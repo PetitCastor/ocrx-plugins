@@ -65,6 +65,14 @@ public sealed class SignaturePlugin : IOcrxPlugin
     private IPluginServices? _services;
     private string? _lastObservation;
 
+    // The live counter set: the calibrated rect zoomed for the current Star Citizen FOV. Swapped
+    // whole, never mutated, because the host reads Rois on every connect. _pushedRois is the set the
+    // engine is known to hold; whenever the two differ, the next tick pushes again.
+    private IReadOnlyList<RoiSubscription> _rois = SignaturePluginRois.All;
+    private IReadOnlyList<RoiSubscription>? _pushedRois;
+    private bool _pushFailing;
+    private readonly StarCitizenFovSource? _fov;
+
     public SignaturePlugin(SignatureTable? table = null) => _table = table ?? SignatureTable.LoadEmbedded();
 
     internal SignaturePlugin(SignatureTable? table, SignaturePluginConfig config, string configPath)
@@ -76,22 +84,34 @@ public sealed class SignaturePlugin : IOcrxPlugin
             : throw new ArgumentException("Config path is required.", nameof(configPath));
     }
     public string Name => "SignaturePlugin";
-    public IReadOnlyList<RoiSubscription> Rois => SignaturePluginRois.All;
+    public IReadOnlyList<RoiSubscription> Rois => Volatile.Read(ref _rois);
 
-    public Task OnTickAsync(TickContext ctx, CancellationToken ct)
+    /// <summary>
+    /// Where Star Citizen's FOV comes from. Null (unit tests) keeps the calibrated rect. Nothing is
+    /// read until a session opens: only then does the plugin know whether the engine is replaying
+    /// recorded frames, which must keep the calibrated rect whatever the live game is set to.
+    /// </summary>
+    internal StarCitizenFovSource? FovSource { get => _fov; init => _fov = value; }
+
+    private RoiSubscription Counter => Rois[0];
+
+    public async Task OnTickAsync(TickContext ctx, CancellationToken ct)
     {
-        if (ctx.Tick.TryGetText(SignaturePluginRois.Counter.Id, out var text))
+        await FollowFovAsync(ctx.Services, ct);
+        if (ctx.Tick.TryGetText(Counter.Id, out var text))
             EmitObservation(ctx, text, TriggerKind.Auto, false);
-        return Task.CompletedTask;
     }
 
     public async Task OnManualTickAsync(TickContext ctx, CancellationToken ct)
     {
-        if (!ctx.Tick.TryGetText(SignaturePluginRois.Counter.Id, out var text)) return;
+        // The rect this tick's text was read through, before a FOV change can move it.
+        var counter = Counter;
+        await FollowFovAsync(ctx.Services, ct);
+        if (!ctx.Tick.TryGetText(counter.Id, out var text)) return;
         EmitObservation(ctx, text, TriggerKind.Manual, true);
         try
         {
-            var png = await ctx.Services.DumpFrameAsync(SignaturePluginRois.Counter.Rect, "counter", ct);
+            var png = await ctx.Services.DumpFrameAsync(counter.Rect, "counter", ct);
             if (png is not null) ctx.Services.LogVerbose($"signature read '{text.Trim()}' — frame dumped to {png}");
         }
         catch (OperationCanceledException) { throw; }
@@ -103,12 +123,66 @@ public sealed class SignaturePlugin : IOcrxPlugin
     }
 
     /// <summary>
+    /// Moves the counter ROI when the user changed Star Citizen's FOV since the last check, and
+    /// pushes <see cref="Rois"/> whenever the engine is not known to hold it. Runs on the tick loop
+    /// (and at connect), so it never races itself; <see cref="Rois"/> is swapped before the engine is
+    /// told, so a reconnect in between still subscribes the moved rect. A failed push is retried on
+    /// the next tick instead of being forgotten until the next FOV change. Replay leaves the
+    /// calibrated rect alone: recorded frames were captured at whatever FOV they were captured at.
+    /// </summary>
+    private async Task FollowFovAsync(IPluginServices services, CancellationToken ct)
+    {
+        if (_fov is null || services.Engine.ReplayMode)
+            return;
+
+        if (_fov.Poll())
+        {
+            var counter = ZoomedCounter(_fov.Current);
+            if (counter != Counter)
+            {
+                Volatile.Write(ref _rois, [counter]);
+                services.Log(string.Create(CultureInfo.InvariantCulture,
+                    $"Star Citizen FOV {_fov.Current:0.####}° (vertical) — counter ROI now ({counter.Rect.X},{counter.Rect.Y}) {counter.Rect.Width}x{counter.Rect.Height}, scale {counter.Scale:0.##}"));
+            }
+        }
+
+        var pending = Rois;
+        if (ReferenceEquals(pending, _pushedRois))
+            return;
+
+        try
+        {
+            await services.UpdateRoisAsync(pending, ct);
+            _pushedRois = pending;
+            _pushFailing = false;
+            // Blank reads through the old rect were a mis-aimed crop, not evidence the badge left.
+            _absence.ResetStreaks();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Said once per failing stretch; each retry would otherwise log every tick.
+            if (!_pushFailing) services.Log($"SignaturePlugin: counter ROI update failed, retrying: {ex.Message}");
+            _pushFailing = true;
+        }
+    }
+
+    private static RoiSubscription ZoomedCounter(double? verticalFov)
+        => StarCitizenFovZoom.Apply(SignaturePluginRois.Counter, StarCitizenFovZoom.Factor(verticalFov));
+
+    /// <summary>
     /// Projects the overlay-theme setting the moment a Track session opens, so the engine's panel has
     /// the current value before the first tick. A plugin built without a config (unit tests) has no
-    /// setting to project and stays silent.
+    /// setting to project and stays silent. Then reads Star Citizen's FOV, so the counter rect is
+    /// zoomed right before the first tick of a live session.
     /// </summary>
-    public Task OnConnectedAsync(IPluginServices services, CancellationToken ct)
-        => _config is null ? Task.CompletedTask : services.PublishSettingsAsync(BuildSpec(_config), ct);
+    public async Task OnConnectedAsync(IPluginServices services, CancellationToken ct)
+    {
+        // The host subscribed Rois as it stood when this session opened.
+        _pushedRois = Rois;
+        if (_config is not null)
+            await services.PublishSettingsAsync(BuildSpec(_config), ct);
+        await FollowFovAsync(services, ct);
+    }
 
     /// <summary>
     /// Applies a user's theme and/or position edit entirely inside this process: validate each value
