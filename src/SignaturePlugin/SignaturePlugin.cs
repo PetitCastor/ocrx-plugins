@@ -65,6 +65,11 @@ public sealed class SignaturePlugin : IOcrxPlugin
     private IPluginServices? _services;
     private string? _lastObservation;
 
+    // The live counter set: the calibrated rect zoomed for the current Star Citizen FOV. Swapped
+    // whole, never mutated, because the host reads Rois on every connect.
+    private IReadOnlyList<RoiSubscription> _rois = SignaturePluginRois.All;
+    private readonly StarCitizenFovSource? _fov;
+
     public SignaturePlugin(SignatureTable? table = null) => _table = table ?? SignatureTable.LoadEmbedded();
 
     internal SignaturePlugin(SignatureTable? table, SignaturePluginConfig config, string configPath)
@@ -76,22 +81,40 @@ public sealed class SignaturePlugin : IOcrxPlugin
             : throw new ArgumentException("Config path is required.", nameof(configPath));
     }
     public string Name => "SignaturePlugin";
-    public IReadOnlyList<RoiSubscription> Rois => SignaturePluginRois.All;
+    public IReadOnlyList<RoiSubscription> Rois => Volatile.Read(ref _rois);
 
-    public Task OnTickAsync(TickContext ctx, CancellationToken ct)
+    /// <summary>
+    /// Where Star Citizen's FOV comes from. Null (unit tests) keeps the calibrated rect. Setting it
+    /// reads the FOV once, so the first subscription is already zoomed right.
+    /// </summary>
+    internal StarCitizenFovSource? FovSource
     {
-        if (ctx.Tick.TryGetText(SignaturePluginRois.Counter.Id, out var text))
+        get => _fov;
+        init
+        {
+            _fov = value;
+            if (_fov is not null && _fov.Poll())
+                Volatile.Write(ref _rois, [ZoomedCounter(_fov.Current)]);
+        }
+    }
+
+    private RoiSubscription Counter => Rois[0];
+
+    public async Task OnTickAsync(TickContext ctx, CancellationToken ct)
+    {
+        await FollowFovAsync(ctx.Services, ct);
+        if (ctx.Tick.TryGetText(Counter.Id, out var text))
             EmitObservation(ctx, text, TriggerKind.Auto, false);
-        return Task.CompletedTask;
     }
 
     public async Task OnManualTickAsync(TickContext ctx, CancellationToken ct)
     {
-        if (!ctx.Tick.TryGetText(SignaturePluginRois.Counter.Id, out var text)) return;
+        await FollowFovAsync(ctx.Services, ct);
+        if (!ctx.Tick.TryGetText(Counter.Id, out var text)) return;
         EmitObservation(ctx, text, TriggerKind.Manual, true);
         try
         {
-            var png = await ctx.Services.DumpFrameAsync(SignaturePluginRois.Counter.Rect, "counter", ct);
+            var png = await ctx.Services.DumpFrameAsync(Counter.Rect, "counter", ct);
             if (png is not null) ctx.Services.LogVerbose($"signature read '{text.Trim()}' — frame dumped to {png}");
         }
         catch (OperationCanceledException) { throw; }
@@ -101,6 +124,30 @@ public sealed class SignaturePlugin : IOcrxPlugin
             ctx.Services.LogVerbose($"signature read '{text.Trim()}' — frame dump failed: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Moves the counter ROI when the user changed Star Citizen's FOV since the last check. Runs on
+    /// the tick loop, so it never races itself; <see cref="Rois"/> is swapped before the engine is
+    /// told, so a reconnect in between still subscribes the moved rect.
+    /// </summary>
+    private async Task FollowFovAsync(IPluginServices services, CancellationToken ct)
+    {
+        if (_fov is null || !_fov.Poll())
+            return;
+
+        var counter = ZoomedCounter(_fov.Current);
+        if (counter == Counter)
+            return;
+
+        IReadOnlyList<RoiSubscription> moved = [counter];
+        Volatile.Write(ref _rois, moved);
+        services.Log(string.Create(CultureInfo.InvariantCulture,
+            $"Star Citizen FOV {_fov.Current:0.####}° (vertical) — counter ROI now ({counter.Rect.X},{counter.Rect.Y}) {counter.Rect.Width}x{counter.Rect.Height}, scale {counter.Scale:0.##}"));
+        await services.UpdateRoisAsync(moved, ct);
+    }
+
+    private static RoiSubscription ZoomedCounter(double? verticalFov)
+        => StarCitizenFovZoom.Apply(SignaturePluginRois.Counter, StarCitizenFovZoom.Factor(verticalFov));
 
     /// <summary>
     /// Projects the overlay-theme setting the moment a Track session opens, so the engine's panel has

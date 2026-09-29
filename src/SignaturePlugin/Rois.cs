@@ -4,9 +4,9 @@ using Ocrx.Sdk;
 namespace SignaturePlugin;
 
 /// <summary>
-/// The regions this plugin subscribes, in reference space (2560x1440). Static for the life of the
-/// process because the host reads it once per connect and sends it as the initial subscription:
-/// per-tick atomicity means there is no mid-tick round-trip that could add a region later.
+/// The regions this plugin subscribes, in reference space (2560x1440), as calibrated. The live set
+/// is these rects zoomed for Star Citizen's current FOV (<see cref="StarCitizenFovZoom"/>), which
+/// <see cref="SignaturePlugin.Rois"/> serves and pushes to the engine whenever the FOV changes.
 /// </summary>
 public static class Rois
 {
@@ -39,6 +39,8 @@ public static class Rois
     /// replay corpus currently has one four-digit frame, so add representative five- and six-digit
     /// frames before treating this setting as replay-proven for wide readings. Do not turn it back
     /// down toward 2-4 without that comparison.</summary>
+    /// <remarks>Calibrated at a vertical FOV at or below <see cref="StarCitizenFovZoom.FloorDegrees"/>,
+    /// where the badge does not move; wider FOVs zoom it toward screen centre.</remarks>
     public static readonly RoiSubscription Counter =
         new("counter", new RoiRect(1264, 454, 70, 44), 6.0, RoiKind.Text);
 

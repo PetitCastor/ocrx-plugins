@@ -22,4 +22,6 @@ OverlayPositions.Apply(themedStartup);
 // degrades to a no-op off Windows, so this stays safe on any platform.
 var options = new PluginHostOptions { Config = themedStartup, OverlayFactory = new OverlaySinkFactory() };
 
-return await OcrxPluginHost.RunAsync(new SignaturePlugin.SignaturePlugin(table, config, configPath), args, options);
+// The FOV source moves the counter ROI with Star Citizen's field-of-view slider; see StarCitizenFovZoom.
+var plugin = new SignaturePlugin.SignaturePlugin(table, config, configPath) { FovSource = new StarCitizenFovSource() };
+return await OcrxPluginHost.RunAsync(plugin, args, options);

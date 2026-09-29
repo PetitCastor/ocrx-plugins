@@ -13,7 +13,13 @@ arrives. It never captures a frame, never runs OCR, and never speaks gRPC; `Ocrx
 > game patch; the parser and overlay fail safely on partial OCR, but that is not a substitute for
 > calibration.
 
-`SignaturePlugin.cs` subscribes to `Rois.Counter`, the mining-mode RS signature number. Before
+`SignaturePlugin.cs` subscribes to `Rois.Counter`, the mining-mode RS signature number. Star
+Citizen draws its HUD in the 3D scene, so its field-of-view slider zooms the badge about screen
+centre. The plugin reads the stored vertical FOV from the running game's
+`user\client\0\Profiles\default\attributes.xml`, which the game rewrites as soon as an option is
+applied. It then zooms the counter ROI to match (`StarCitizenFovZoom`) and pushes the moved rect to
+the engine without a restart. Below a vertical FOV of about 60.3° (slider ≈92) the badge does not
+move. `Rois.Counter` is calibrated in that zone, so calibrate at a slider of 92 or lower. Before
 trusting replay parity, calibrate that rectangle against your own capture:
 
 1. Get an engine running with `--save-frames`, either a
