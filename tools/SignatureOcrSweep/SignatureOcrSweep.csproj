@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The one project in this repo with a Windows TFM: offline mode calls Windows.Media.Ocr and
+       Windows.Graphics.Imaging directly, the same APIs the engine's OcrPipeline uses. NuGet
+       packages only (never a ProjectReference into another clone). The three plugin files below are
+       linked, not referenced: SignatureParser and StarCitizenFovZoom are the code the shipped plugin
+       runs, so a measurement here is a measurement of that code, and linking keeps the internal
+       StarCitizenFovZoom internal without touching the plugin project. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>SignatureOcrSweep</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Ocrx.Sdk" Version="2.7.0" />
+    <PackageReference Include="Ocrx.Contracts" Version="2.7.0" />
+    <PackageReference Include="Ocrx.Sdk.Testing" Version="2.7.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\SignaturePlugin\SignatureParser.cs" Link="Plugin\SignatureParser.cs" />
+    <Compile Include="..\..\src\SignaturePlugin\StarCitizenFovZoom.cs" Link="Plugin\StarCitizenFovZoom.cs" />
+    <Compile Include="..\..\src\SignaturePlugin\Rois.cs" Link="Plugin\Rois.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SignatureOcrSweep.Tests" />
+  </ItemGroup>
+
+</Project>
