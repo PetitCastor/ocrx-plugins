@@ -1,5 +1,10 @@
 # SignaturePlugin — development notes
 
+SignaturePlugin is a console process that declares screen regions (ROIs) and what to do with the
+OCR result each time a tick carrying them arrives. It never captures a frame, never runs OCR, and
+never speaks gRPC; `OcrxPluginHost` (from `Ocrx.Sdk`) owns connecting, subscribing, reconnecting,
+and shutdown.
+
 Maintainer-facing material split out of the [README](README.md): ROI calibration, the replay
 corpus, how the overlay decides to show and hide, and build/test commands. Users do not need any of
 this.
