@@ -1,0 +1,8 @@
+{
+  "tag": "v2.7.1",
+  "channel": "stable",
+  "plugins": [
+    "SignaturePlugin"
+  ],
+  "notes": "SignaturePlugin v2.7.1 has no change to how signatures are read. The README is rewritten as a user guide covering setup, the Theme and Position settings and troubleshooting, and the Star Citizen theme now carries the same label in the settings panel before and after the plugin connects. Built on Ocrx.Sdk 2.7.0; tested against engine v2.0.40."
+}
