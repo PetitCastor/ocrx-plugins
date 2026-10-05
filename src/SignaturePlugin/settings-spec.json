@@ -7,7 +7,7 @@
       "value": "default",
       "options": [
         { "value": "default", "label": "Default" },
-        { "value": "citizen", "label": "Citizen" },
+        { "value": "citizen", "label": "Star Citizen" },
         { "value": "retro", "label": "Retro" }
       ],
       "group": "Overlay"
