@@ -31,7 +31,8 @@ function ConvertFrom-ChangelogEntry {
     if ($text.Length -gt $script:ChangelogMaxEntryLength) {
         throw "${Source}: entry is $($text.Length) characters; keep it to $($script:ChangelogMaxEntryLength) or fewer."
     }
-    if ($text.Contains("`n") -or $text.Contains("`r")) {
+    # The pattern's `.` never matches a line feed, so only a carriage return can still be inside.
+    if ($text.Contains("`r")) {
         throw "${Source}: an entry is one line."
     }
 

@@ -14,8 +14,17 @@ function Assert-Equal {
 }
 
 function Assert-Throws {
-    param([string]$Name, [scriptblock]$Action)
-    try { & $Action; $failures.Add("$Name : expected an error, but none was raised.") } catch { }
+    # $Expect: a fragment of the message the error must carry, so a case cannot pass on an unrelated failure.
+    param([string]$Name, [scriptblock]$Action, [string]$Expect)
+    try {
+        & $Action
+        $failures.Add("$Name : expected an error, but none was raised.")
+    }
+    catch {
+        if ($Expect -and -not $_.Exception.Message.Contains($Expect)) {
+            $failures.Add("$Name : expected an error mentioning '$Expect', got: $($_.Exception.Message)")
+        }
+    }
 }
 
 function New-Descriptor {
@@ -64,10 +73,10 @@ Assert-Equal 'a preview with no changes says so' `
     "# Changelog`n`n## [2.7.3-signature-alpha.1] - 2026-10-20`n`n### Changed`n- No user-visible changes.`n" `
     (Invoke-Build -Descriptor $preview -Out (Join-Path $work 'o5'))
 
-Assert-Throws 'a malformed change fails the build' {
+Assert-Throws 'a malformed change fails the build' -Expect "unknown kind 'Nope'" -Action {
     Invoke-Build -Descriptor (New-Descriptor 'bad' @{ tag = 'v2.7.4'; channel = 'stable'; plugins = @('SignaturePlugin'); notes = 'n'; changes = @('Nope: x') }) -Out (Join-Path $work 'o6')
 }
-Assert-Throws 'a malformed tag fails the build' {
+Assert-Throws 'a malformed tag fails the build' -Expect 'Descriptor tag must be' -Action {
     Invoke-Build -Descriptor (New-Descriptor 'badtag' @{ tag = 'latest'; channel = 'stable'; plugins = @('SignaturePlugin'); notes = 'n'; changes = @('Fixed: x') }) -Out (Join-Path $work 'o7')
 }
 
