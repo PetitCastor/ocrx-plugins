@@ -186,6 +186,54 @@ jobs:
           $($manifest.notes)
           "@ | Out-File -Encoding utf8 release-notes.md
 
+      # The cumulative CHANGELOG.md the engine's plugin manager reads off a release to show what an
+      # update changes (ocrx-engine PluginChangelogSource reads releases/download/<tag>/CHANGELOG.md).
+      # Built from the descriptor's `changes` (scripts/Build-Changelog.ps1) on top of the previous
+      # stable release's asset, so one file carries every version and a user skipping releases sees all
+      # of them. A preview gets only its own section: previews are pinned, with no "latest" lineage.
+      #
+      # "Previous" is GitHub's latest release of this repository, which excludes prereleases and does
+      # not yet include the release this run is about to create. A release without the asset (every one
+      # before this step existed) starts the history over. A failure to read the previous release throws
+      # rather than publishing a changelog that silently forgets every earlier version.
+      - name: Build changelog
+        if: steps.descriptor.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          TAG: ${{ steps.descriptor.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $descriptor = ".github/release-manifests/$env:TAG.json"
+          $manifest = Get-Content $descriptor -Raw | ConvertFrom-Json
+          $buildArgs = @{ Descriptor = $descriptor; OutDir = 'changelog' }
+
+          if ($manifest.channel -eq 'stable') {
+            New-Item -ItemType Directory -Force -Path changelog-base | Out-Null
+            $previousErrorActionPreference = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            $latest = gh release view --repo $env:GH_REPO --json tagName,assets 2>&1 | Out-String
+            $viewExit = $LASTEXITCODE
+            $global:LASTEXITCODE = 0
+            $ErrorActionPreference = $previousErrorActionPreference
+
+            if ($viewExit -eq 0) {
+              $info = $latest | ConvertFrom-Json
+              if (@($info.assets | Where-Object { $_.name -eq 'CHANGELOG.md' }).Count -gt 0) {
+                gh release download $info.tagName --repo $env:GH_REPO --pattern CHANGELOG.md --dir changelog-base
+                if ($LASTEXITCODE -ne 0) { throw "Could not download CHANGELOG.md from release $($info.tagName)." }
+                $buildArgs.BasePath = 'changelog-base/CHANGELOG.md'
+              }
+            }
+            elseif ($latest -notmatch 'release not found') {
+              throw "Could not read the latest release: $latest"
+            }
+          }
+
+          ./scripts/Build-Changelog.ps1 @buildArgs
+          "`n" + (Get-Content changelog/release-notes-changes.md -Raw) | Out-File -Encoding utf8 -Append release-notes.md
+          Get-Content release-notes.md
+
       - name: Upload release payload
         if: steps.descriptor.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
@@ -195,6 +243,7 @@ jobs:
             release-assets/*-win-x64.zip
             release-assets.txt
             release-notes.md
+            changelog/CHANGELOG.md
           if-no-files-found: error
           retention-days: 1
 
@@ -228,6 +277,11 @@ jobs:
             $assets.Add((Resolve-Path -LiteralPath $asset).Path)
           }
           if ($assets.Count -eq 0) { throw 'No plugin archives were produced.' }
+          # A fixed, separately named asset rather than a looser archive-name rule above: the engine reads
+          # it at releases/download/<tag>/CHANGELOG.md, and nothing else may ride along with it.
+          $changelog = 'release-payload/changelog/CHANGELOG.md'
+          if (-not (Test-Path -LiteralPath $changelog)) { throw "Missing release asset: $changelog" }
+          $assets.Add((Resolve-Path -LiteralPath $changelog).Path)
           $arguments = @('release', 'create', $env:TAG, '-R', $env:GH_REPO, '--target', $env:GITHUB_SHA, '--notes-file', 'release-payload/release-notes.md')
           if ($env:PRERELEASE -eq 'true') { $arguments += '--prerelease' }
           $arguments += $assets

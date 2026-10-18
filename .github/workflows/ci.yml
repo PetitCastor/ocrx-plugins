@@ -15,6 +15,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # The descriptor check below diffs the pull request against its base, so it needs both histories.
+          fetch-depth: 0
 
       - name: Validate plugin catalogs
         shell: pwsh
@@ -58,6 +61,26 @@ jobs:
       - name: Release-descriptor validation checks
         shell: pwsh
         run: ./scripts/Test-ReleaseDescriptor.Tests.ps1
+
+      - name: Changelog build checks
+        shell: pwsh
+        run: ./scripts/Build-Changelog.Tests.ps1
+
+      # The release workflow validates a descriptor only after its PR has merged, which is too late to fix
+      # it without a second PR. Validate the one this PR adds now, `changes` included. Descriptors that
+      # predate the `changes` field are history and are not re-checked.
+      - name: Validate the release descriptor this pull request adds
+        shell: pwsh
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: |
+          $added = @(git diff --no-renames --diff-filter=A --name-only "$env:BASE_REF...HEAD" -- '.github/release-manifests/*.json')
+          if ($LASTEXITCODE -ne 0) { throw "git diff against $env:BASE_REF failed." }
+          foreach ($path in ($added | Where-Object { $_ })) {
+            ./scripts/Test-ReleaseDescriptor.ps1 -Tag ([System.IO.Path]::GetFileNameWithoutExtension($path))
+            ./scripts/Build-Changelog.ps1 -Descriptor $path -OutDir "changelog-check" | Out-Null
+            Write-Host "Validated $path"
+          }
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4

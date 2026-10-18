@@ -8,6 +8,39 @@ than one descriptor, or when the descriptor's own `tag` field disagrees with its
 
 ```json
 {
+  "tag": "v2.7.2",
+  "channel": "stable",
+  "plugins": ["SignaturePlugin"],
+  "notes": "SignaturePlugin v2.7.2. Built on Ocrx.Sdk 2.7.0; tested against engine v2.0.52.",
+  "changes": [
+    "Fixed: The overlay no longer flickers when the badge is lost for one frame.",
+    "Added: A setting to hide the overlay while the game is paused."
+  ]
+}
+```
+
+`changes` is the release's changelog, and it is what users read: the engine shows these lines in the
+plugin's detail pane before they click **Update**, keeps them there after, and lists them under the
+plugin's **Changelog** button. The release workflow turns them into the release's `CHANGELOG.md` asset,
+on top of the previous stable release's, so the file always carries the whole history.
+
+- One entry per change, `Kind: text`, with `Kind` one of `Added`, `Changed`, `Fixed`, `Removed` (exact
+  case).
+- One sentence a user would understand, 200 characters at most. Say what they see or get, not what the
+  code does: "Fixed: The overlay no longer flickers." is right; "Fixed: debounce in OverlayController" is
+  not.
+- Required, with at least one entry, on a stable release; optional on a preview (a preview with none is
+  recorded as "No user-visible changes.").
+- `notes` stays the prose header of the GitHub release body (build and test context); the `changes` lines
+  follow it there.
+
+CI validates the descriptor a pull request adds, `changes` included, before it can merge. Descriptors
+from before `changes` existed are history and are not re-checked.
+
+A preview descriptor looks the same with `"channel": "preview"`, a preview tag, and `changes` optional:
+
+```json
+{
   "tag": "v1.0.17-signature-alpha.1",
   "channel": "preview",
   "plugins": ["SignaturePlugin"],
