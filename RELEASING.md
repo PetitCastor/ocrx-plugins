@@ -11,6 +11,9 @@ and CI in the same PR.
 
 1. Add `.github/release-manifests/<tag>.json` in the release PR. Stable tags are `v1.2.3`; preview
    tags name the plugin and the stage, as in `v1.2.4-signature-alpha.1` or `v1.2.4-signature-beta.2`.
+   A stable descriptor must list its `changes`, one user-facing `Kind: text` line per change; they become
+   the release's `CHANGELOG.md` asset, which the engine shows before and after an update. See
+   `.github/release-manifests/README.md`.
 2. Merge the PR into `master`. The merge itself is what ships the release: the Release workflow
    triggers on the push to `master`, resolves the tag from whichever descriptor the merge added,
    validates it, builds and publishes the selected plugin(s), and creates the GitHub release —

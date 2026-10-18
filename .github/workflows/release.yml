@@ -212,6 +212,61 @@ jobs:
           name: release-payload-${{ needs.build.outputs.tag }}
           path: release-payload
 
+      # The scripts and the descriptor, at the merged commit, for the changelog step below. Checked out
+      # into a subfolder so the downloaded payload is left exactly as the build job produced it.
+      - name: Checkout merged source
+        uses: actions/checkout@v4
+        with:
+          path: source
+          persist-credentials: false
+
+      # The cumulative CHANGELOG.md the engine's plugin manager reads off a release to show what an
+      # update changes (ocrx-engine PluginChangelogSource reads releases/download/<tag>/CHANGELOG.md).
+      # Built from the descriptor's `changes` (scripts/Build-Changelog.ps1) on top of the previous stable
+      # release's asset, so one file carries every version and a user skipping releases sees all of them.
+      # A preview gets only its own section: previews are pinned, with no "latest" lineage.
+      #
+      # Here, in the release job, immediately before the release is created, and not in the build job:
+      # runs are grouped per commit, so two release PRs merged back to back build in parallel, and a base
+      # read minutes before the build finished would let the second release be built on the same base as
+      # the first and drop the first one's section for good. This narrows that window to seconds.
+      #
+      # "Previous" is the newest stable release that carries a CHANGELOG.md, walking back from GitHub's
+      # latest (which excludes prereleases and does not yet include this release). One that lacks the
+      # asset (a failed upload) is skipped rather than resetting the whole history. When no release has
+      # one (every release before this step existed), the history starts here. A failure to read the
+      # release list throws rather than publish a changelog that silently forgets earlier versions.
+      - name: Build changelog
+        shell: pwsh
+        env:
+          TAG: ${{ needs.build.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $descriptor = "source/.github/release-manifests/$env:TAG.json"
+          $manifest = Get-Content $descriptor -Raw | ConvertFrom-Json
+          $buildArgs = @{ Descriptor = $descriptor; OutDir = 'changelog' }
+
+          if ($manifest.channel -eq 'stable') {
+            $list = gh release list --repo $env:GH_REPO --exclude-pre-releases --limit 20 --json tagName
+            if ($LASTEXITCODE -ne 0) { throw 'Could not list the previous releases.' }
+            foreach ($previous in @($list | ConvertFrom-Json)) {
+              $assets = gh release view $previous.tagName --repo $env:GH_REPO --json assets --jq '.assets[].name'
+              if ($LASTEXITCODE -ne 0) { throw "Could not read release $($previous.tagName)." }
+              if (@($assets) -contains 'CHANGELOG.md') {
+                gh release download $previous.tagName --repo $env:GH_REPO --pattern CHANGELOG.md --dir changelog-base
+                if ($LASTEXITCODE -ne 0) { throw "Could not download CHANGELOG.md from release $($previous.tagName)." }
+                $buildArgs.BasePath = 'changelog-base/CHANGELOG.md'
+                Write-Host "Building on the changelog of $($previous.tagName)."
+                break
+              }
+            }
+          }
+
+          ./source/scripts/Build-Changelog.ps1 @buildArgs
+          "`n" + (Get-Content changelog/release-notes-changes.md -Raw) | Out-File -Encoding utf8 -Append release-payload/release-notes.md
+          Get-Content release-payload/release-notes.md
+
       - name: Create GitHub release
         shell: pwsh
         env:
@@ -228,6 +283,11 @@ jobs:
             $assets.Add((Resolve-Path -LiteralPath $asset).Path)
           }
           if ($assets.Count -eq 0) { throw 'No plugin archives were produced.' }
+          # A fixed, separately named asset rather than a looser archive-name rule above: the engine reads
+          # it at releases/download/<tag>/CHANGELOG.md, and nothing else may ride along with it.
+          $changelog = 'changelog/CHANGELOG.md'
+          if (-not (Test-Path -LiteralPath $changelog)) { throw "Missing release asset: $changelog" }
+          $assets.Add((Resolve-Path -LiteralPath $changelog).Path)
           $arguments = @('release', 'create', $env:TAG, '-R', $env:GH_REPO, '--target', $env:GITHUB_SHA, '--notes-file', 'release-payload/release-notes.md')
           if ($env:PRERELEASE -eq 'true') { $arguments += '--prerelease' }
           $arguments += $assets

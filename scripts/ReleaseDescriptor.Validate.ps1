@@ -2,6 +2,8 @@
 # plugins" step, and Test-ReleaseDescriptor.Tests.ps1 (fixture-driven checks with no file I/O) — so
 # the plugin allowlist and the validation rules built on it are pinned in exactly one place.
 
+. "$PSScriptRoot/ChangelogEntry.ps1"
+
 # Every entry here is also a `src/<name>` project directory by convention; release.yml relies on
 # that to build its publish path map without hand-duplicating this list.
 #
@@ -20,6 +22,22 @@ function Test-ReleaseDescriptorManifest {
     if ($Manifest.tag -cne $Tag) { throw "Descriptor tag '$($Manifest.tag)' does not match '$Tag'." }
     if ($Manifest.channel -notin @('stable', 'preview')) { throw "channel must be 'stable' or 'preview'." }
     if ([string]::IsNullOrWhiteSpace($Manifest.notes)) { throw 'notes must be non-empty.' }
+
+    # `changes` is the release's changelog: one-line `Kind: text` entries the engine shows the user before
+    # an update (see ChangelogEntry.ps1). Required on a stable release, so a stable release never ships
+    # with nothing to say; optional on a preview. Only the descriptor being released is checked, so the
+    # descriptors that predate the field stay valid history.
+    $hasChanges = $null -ne $Manifest.PSObject.Properties['changes']
+    $changes = if ($hasChanges) { @($Manifest.changes) } else { @() }
+    if ($Manifest.channel -eq 'stable' -and $changes.Count -eq 0) {
+        throw 'changes must list at least one "Kind: text" entry for a stable release.'
+    }
+    $seenChanges = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($change in $changes) {
+        if ($change -isnot [string]) { throw 'every changes entry must be a string.' }
+        $entry = ConvertFrom-ChangelogEntry -Entry $change -Source 'changes'
+        if (-not $seenChanges.Add("$($entry.Kind)|$($entry.Text)")) { throw "changes lists '$change' twice." }
+    }
 
     $plugins = @($Manifest.plugins)
     if ($plugins.Count -eq 0) { throw 'plugins must contain at least one plugin.' }
