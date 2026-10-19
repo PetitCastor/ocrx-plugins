@@ -3,9 +3,8 @@ updates:
   # Ocrx.Contracts / .Sdk / .Sdk.Testing arrive here as PackageReference — Dependabot opens
   # a PR whenever a new SDK version is published to nuget.org. Weekly, not daily: these three move
   # together on the engine repo's own release cadence, not per-commit, so a daily check would mostly
-  # find nothing. Engine pin bumps (engine-version.txt) are NOT covered by this — that file isn't a
-  # NuGet reference Dependabot can see, and 00-OVERVIEW.md's "Plugins-repo CI" decision keeps that
-  # bump a deliberate manual one-line PR, not an automated one.
+  # find nothing. The engine binary is not a NuGet reference: CI and release always download the latest
+  # ocrx-releases engine, so there is no engine pin to bump.
   - package-ecosystem: nuget
     directory: /
     schedule:
