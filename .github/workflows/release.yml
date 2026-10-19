@@ -33,8 +33,9 @@ jobs:
           persist-credentials: false
 
       # A release manifest is what makes this push a release, not merely a push that touched the
-      # release-manifests folder: a PR that only edits an existing descriptor (a typo fix before its
-      # tag ever shipped) has nothing new to release, and github.event.before is the all-zeros SHA on
+      # release-manifests folder: a PR that only edits a descriptor whose tag has already shipped has
+      # nothing new to release (the "already exists" check below skips it; a modified descriptor whose
+      # release was never created is released), and github.event.before is the all-zeros SHA on
       # a branch's first push, so there is nothing to diff against. Both cases skip the run rather
       # than fail it — this workflow's paths filter already limits it to pushes that plausibly mean
       # to ship something, and a plain skip keeps a "checks passed" branch protection rule from

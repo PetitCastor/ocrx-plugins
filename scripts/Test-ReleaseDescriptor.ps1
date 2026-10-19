@@ -1,6 +1,11 @@
 param(
     [Parameter(Mandatory)]
-    [string]$Tag
+    [string]$Tag,
+
+    # The latest stable release's tag. When given, a stable descriptor is also checked against it (tag
+    # strictly greater, bump large enough for `changes`). CI passes it; the release workflow, which
+    # runs after the tag is chosen, does not.
+    [string]$LatestStableTag
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,4 +23,4 @@ catch {
     throw "Release descriptor is not valid JSON: $manifestPath"
 }
 
-Test-ReleaseDescriptorManifest -Manifest $manifest -Tag $Tag
+Test-ReleaseDescriptorManifest -Manifest $manifest -Tag $Tag -LatestStableTag $LatestStableTag

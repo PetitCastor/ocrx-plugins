@@ -11,7 +11,7 @@ than one descriptor, or when the descriptor's own `tag` field disagrees with its
   "tag": "v2.7.2",
   "channel": "stable",
   "plugins": ["SignaturePlugin"],
-  "notes": "SignaturePlugin v2.7.2. Built on Ocrx.Sdk 2.7.0; tested against engine v2.0.52.",
+  "notes": "SignaturePlugin v2.7.2. Built on Ocrx.Sdk 2.7.0.",
   "changes": [
     "Fixed: The overlay no longer flickers when the badge is lost for one frame.",
     "Added: A setting to hide the overlay while the game is paused."
@@ -34,8 +34,14 @@ on top of the previous stable release's, so the file always carries the whole hi
 - `notes` stays the prose header of the GitHub release body (build and test context); the `changes` lines
   follow it there.
 
-CI validates the descriptor a pull request adds, `changes` included, before it can merge. Descriptors
-from before `changes` existed are history and are not re-checked.
+CI validates every descriptor a pull request adds or changes whose tag has not shipped, `changes` included, before it can merge. Descriptors
+from before `changes` existed are history and are not re-checked. A stable descriptor is also checked
+against the latest stable release: its tag must be strictly greater, and the bump must cover `changes`
+(an `Added` entry needs at least a minor bump, `Changed`, `Fixed` and `Removed` at least a patch bump).
+
+There is no engine version to record in the descriptor. The plugin is tested against the latest release
+of `ocrx-releases` (no pin file exists), and the release workflow writes `Tested against OCRX engine
+<tag>.` at the top of the release body itself, so `notes` should not repeat it.
 
 A preview descriptor looks the same with `"channel": "preview"`, a preview tag, and `changes` optional:
 

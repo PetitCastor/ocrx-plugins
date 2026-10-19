@@ -8,9 +8,9 @@ $ErrorActionPreference = 'Stop'
 $failures = [System.Collections.Generic.List[string]]::new()
 
 function Assert-Valid {
-    param([string]$Name, [hashtable]$Manifest, [string]$Tag)
+    param([string]$Name, [hashtable]$Manifest, [string]$Tag, [string]$LatestStableTag)
     try {
-        Test-ReleaseDescriptorManifest -Manifest ([pscustomobject]$Manifest) -Tag $Tag
+        Test-ReleaseDescriptorManifest -Manifest ([pscustomobject]$Manifest) -Tag $Tag -LatestStableTag $LatestStableTag
     }
     catch {
         $failures.Add("$Name : expected valid, but got error: $($_.Exception.Message)")
@@ -18,9 +18,9 @@ function Assert-Valid {
 }
 
 function Assert-Invalid {
-    param([string]$Name, [hashtable]$Manifest, [string]$Tag)
+    param([string]$Name, [hashtable]$Manifest, [string]$Tag, [string]$LatestStableTag)
     try {
-        Test-ReleaseDescriptorManifest -Manifest ([pscustomobject]$Manifest) -Tag $Tag
+        Test-ReleaseDescriptorManifest -Manifest ([pscustomobject]$Manifest) -Tag $Tag -LatestStableTag $LatestStableTag
         $failures.Add("$Name : expected an error, but validation passed.")
     }
     catch {
@@ -129,6 +129,76 @@ Assert-Invalid 'preview with a malformed change' `
 Assert-Invalid 'frozen proof-of-concept plugin selected' `
     -Tag 'v1.2.3' `
     -Manifest @{ tag = 'v1.2.3'; channel = 'stable'; changes = @('Fixed: A fix.'); notes = 'n'; plugins = @('RefineryPlugin') }
+
+# Version progression against the latest stable release (the CI pull-request check passes it; the shape
+# checks above omit it). A tag must be strictly greater, and its bump must cover the kinds in `changes`:
+# `Added` is minor at least, Changed/Fixed/Removed are patch at least.
+function New-StableManifest {
+    param([string]$Tag, [string[]]$Changes)
+    return @{ tag = $Tag; channel = 'stable'; changes = $Changes; notes = 'n'; plugins = @('SignaturePlugin') }
+}
+
+Assert-Valid 'patch bump for a Fixed entry' `
+    -Tag 'v2.7.3' -LatestStableTag 'v2.7.2' `
+    -Manifest (New-StableManifest 'v2.7.3' @('Fixed: A fix.'))
+
+Assert-Valid 'minor bump for an Added entry' `
+    -Tag 'v2.8.0' -LatestStableTag 'v2.7.2' `
+    -Manifest (New-StableManifest 'v2.8.0' @('Added: A theme.'))
+
+Assert-Valid 'minor bump is enough for a Fixed entry' `
+    -Tag 'v2.8.0' -LatestStableTag 'v2.7.2' `
+    -Manifest (New-StableManifest 'v2.8.0' @('Fixed: A fix.'))
+
+Assert-Valid 'major bump is allowed for any entry' `
+    -Tag 'v3.0.0' -LatestStableTag 'v2.7.2' `
+    -Manifest (New-StableManifest 'v3.0.0' @('Fixed: A fix.'))
+
+Assert-Valid 'patch bump across a double-digit component (v2.10.0 is above v2.9.0)' `
+    -Tag 'v2.10.1' -LatestStableTag 'v2.10.0' `
+    -Manifest (New-StableManifest 'v2.10.1' @('Changed: A tweak.'))
+
+Assert-Invalid 'tag equal to the latest stable release' `
+    -Tag 'v2.7.2' -LatestStableTag 'v2.7.2' `
+    -Manifest (New-StableManifest 'v2.7.2' @('Fixed: A fix.'))
+
+Assert-Invalid 'tag below the latest stable release' `
+    -Tag 'v2.7.1' -LatestStableTag 'v2.7.2' `
+    -Manifest (New-StableManifest 'v2.7.1' @('Fixed: A fix.'))
+
+Assert-Invalid 'lower minor within the same major' `
+    -Tag 'v2.6.9' -LatestStableTag 'v2.7.2' `
+    -Manifest (New-StableManifest 'v2.6.9' @('Fixed: A fix.'))
+
+Assert-Invalid 'Added entry with only a patch bump' `
+    -Tag 'v2.7.3' -LatestStableTag 'v2.7.2' `
+    -Manifest (New-StableManifest 'v2.7.3' @('Added: A theme.'))
+
+Assert-Valid 'patch bump for a Removed entry' `
+    -Tag 'v2.7.3' -LatestStableTag 'v2.7.2' `
+    -Manifest (New-StableManifest 'v2.7.3' @('Removed: An old option.'))
+
+Assert-Invalid 'Added among other entries with only a patch bump' `
+    -Tag 'v2.7.3' -LatestStableTag 'v2.7.2' `
+    -Manifest (New-StableManifest 'v2.7.3' @('Fixed: A fix.', 'Added: A theme.'))
+
+Assert-Valid 'a preview is not compared with the stable line' `
+    -Tag 'v2.7.2-signature-alpha.1' -LatestStableTag 'v2.7.2' `
+    -Manifest @{ tag = 'v2.7.2-signature-alpha.1'; channel = 'preview'; notes = 'n'; plugins = @('SignaturePlugin') }
+
+# Get-LatestStableTag: highest plain stable tag, by version not by string or position.
+function Assert-LatestStable {
+    param([string]$Name, [string[]]$Tags, $Expected)
+    $actual = Get-LatestStableTag -Tags $Tags
+    if ($actual -cne $Expected) { $failures.Add("$Name : expected '$Expected', got '$actual'.") }
+}
+
+Assert-LatestStable 'highest by version, not string' @('v2.9.0', 'v2.10.0', 'v2.2.0') 'v2.10.0'
+Assert-LatestStable 'order of input does not matter' @('v2.7.2', 'v2.7.1', 'v2.7.0') 'v2.7.2'
+Assert-LatestStable 'previews are ignored' @('v2.7.2', 'v2.8.0-signature-alpha.1') 'v2.7.2'
+Assert-LatestStable 'no stable tag at all' @('v2.8.0-signature-alpha.1') $null
+Assert-LatestStable 'a single tag' @('v2.7.2') 'v2.7.2'
+Assert-LatestStable 'empty list' @() $null
 
 if ($failures.Count -gt 0) {
     $failures | ForEach-Object { Write-Host "FAIL: $_" -ForegroundColor Red }
