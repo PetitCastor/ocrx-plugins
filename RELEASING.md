@@ -21,7 +21,7 @@ and CI in the same PR.
    no separate tagging step and nothing to push by hand. Editing an existing descriptor releases it
    too, unless its tag already exists as a release: then the workflow finds the release and skips, so
    a typo fix on a descriptor that has shipped changes nothing. A descriptor whose tag has not shipped
-   yet (a typo fix before the first merge, or an edit after a failed run) is released by that push.
+   yet (for instance an edit made after a failed release run) is released by that push.
    Nothing else releases: a PR that touches `src/` but adds no descriptor merges without publishing
    anything, and its changes go out with the next descriptor. CI says so with a notice on the PR.
 3. Pick the tag so CI accepts it. On a stable descriptor, CI requires the tag to be strictly greater

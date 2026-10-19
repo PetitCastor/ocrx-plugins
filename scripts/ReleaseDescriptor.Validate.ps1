@@ -20,7 +20,7 @@ function Get-LatestStableTag {
     # ignored.
     param([AllowEmptyCollection()] [string[]]$Tags = @())
 
-    $stable = @($Tags | Where-Object { $_ -match '^v\d+\.\d+\.\d+$' })
+    $stable = @($Tags | Where-Object { $_ -cmatch '^v\d+\.\d+\.\d+$' })
     if ($stable.Count -eq 0) { return $null }
     return ($stable | Sort-Object { [version]$_.Substring(1) } -Descending | Select-Object -First 1)
 }

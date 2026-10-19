@@ -174,6 +174,10 @@ Assert-Invalid 'Added entry with only a patch bump' `
     -Tag 'v2.7.3' -LatestStableTag 'v2.7.2' `
     -Manifest (New-StableManifest 'v2.7.3' @('Added: A theme.'))
 
+Assert-Valid 'patch bump for a Removed entry' `
+    -Tag 'v2.7.3' -LatestStableTag 'v2.7.2' `
+    -Manifest (New-StableManifest 'v2.7.3' @('Removed: An old option.'))
+
 Assert-Invalid 'Added among other entries with only a patch bump' `
     -Tag 'v2.7.3' -LatestStableTag 'v2.7.2' `
     -Manifest (New-StableManifest 'v2.7.3' @('Fixed: A fix.', 'Added: A theme.'))
@@ -193,6 +197,7 @@ Assert-LatestStable 'highest by version, not string' @('v2.9.0', 'v2.10.0', 'v2.
 Assert-LatestStable 'order of input does not matter' @('v2.7.2', 'v2.7.1', 'v2.7.0') 'v2.7.2'
 Assert-LatestStable 'previews are ignored' @('v2.7.2', 'v2.8.0-signature-alpha.1') 'v2.7.2'
 Assert-LatestStable 'no stable tag at all' @('v2.8.0-signature-alpha.1') $null
+Assert-LatestStable 'a single tag' @('v2.7.2') 'v2.7.2'
 Assert-LatestStable 'empty list' @() $null
 
 if ($failures.Count -gt 0) {

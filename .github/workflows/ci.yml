@@ -90,22 +90,23 @@ jobs:
 
           # The version rules (strictly above the last stable release, bump large enough for `changes`)
           # need that release. Ask GitHub rather than `git tag`: it is the list users download from, and
-          # --exclude-pre-releases keeps previews out of it. Looked up once, and only when a descriptor
-          # is actually being checked.
+          # --exclude-pre-releases keeps previews out of it. Looked up once, on the first descriptor
+          # that has not shipped, so a PR that only touches shipped history never calls the API.
+          . ./scripts/ReleaseDescriptor.Validate.ps1
           $latestStable = $null
-          if ($touched) {
-            . ./scripts/ReleaseDescriptor.Validate.ps1
-            $releases = gh release list --exclude-pre-releases --limit 100 --json tagName --jq '.[].tagName'
-            if ($LASTEXITCODE -ne 0) { throw 'gh release list failed.' }
-            $latestStable = Get-LatestStableTag -Tags @($releases)
-            Write-Host "Latest stable release: $latestStable"
-          }
-
+          $lookedUp = $false
           foreach ($path in ($touched | Where-Object { $_ })) {
             $tag = [System.IO.Path]::GetFileNameWithoutExtension($path)
             if (git tag --list $tag) {
               Write-Host "Skipping ${path}: $tag has already shipped."
               continue
+            }
+            if (-not $lookedUp) {
+              $releases = gh release list --exclude-pre-releases --limit 100 --json tagName --jq '.[].tagName'
+              if ($LASTEXITCODE -ne 0) { throw 'gh release list failed.' }
+              $latestStable = Get-LatestStableTag -Tags @($releases)
+              $lookedUp = $true
+              Write-Host "Latest stable release: $latestStable"
             }
             ./scripts/Test-ReleaseDescriptor.ps1 -Tag $tag -LatestStableTag $latestStable
             ./scripts/Build-Changelog.ps1 -Descriptor $path -OutDir "changelog-check" | Out-Null
@@ -125,7 +126,12 @@ jobs:
         run: |
           try {
             $src = @(git diff --no-renames --name-only "$env:BASE_REF...HEAD" -- 'src/SignaturePlugin')
-            $descriptors = @(git diff --no-renames --diff-filter=AM --name-only "$env:BASE_REF...HEAD" -- '.github/release-manifests/*.json')
+            if ($LASTEXITCODE -ne 0) { throw "git diff against $env:BASE_REF failed." }
+            $touched = @(git diff --no-renames --diff-filter=AM --name-only "$env:BASE_REF...HEAD" -- '.github/release-manifests/*.json')
+            if ($LASTEXITCODE -ne 0) { throw "git diff against $env:BASE_REF failed." }
+            # Only a descriptor that will actually release counts: editing one whose tag already shipped
+            # publishes nothing.
+            $descriptors = @($touched | Where-Object { $_ -and -not (git tag --list ([System.IO.Path]::GetFileNameWithoutExtension($_))) })
             if ($src -and -not $descriptors) {
               Write-Host '::notice title=Unreleased plugin changes::This pull request changes src/SignaturePlugin without a release descriptor. The changes are not published when it merges; they ship with the next descriptor (see RELEASING.md).'
             }

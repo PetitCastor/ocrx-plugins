@@ -34,7 +34,7 @@ on top of the previous stable release's, so the file always carries the whole hi
 - `notes` stays the prose header of the GitHub release body (build and test context); the `changes` lines
   follow it there.
 
-CI validates the descriptor a pull request adds, `changes` included, before it can merge. Descriptors
+CI validates every descriptor a pull request adds or changes whose tag has not shipped, `changes` included, before it can merge. Descriptors
 from before `changes` existed are history and are not re-checked. A stable descriptor is also checked
 against the latest stable release: its tag must be strictly greater, and the bump must cover `changes`
 (an `Added` entry needs at least a minor bump, `Changed`, `Fixed` and `Removed` at least a patch bump).
