@@ -36,5 +36,5 @@ and CI in the same PR.
 
 Preview builds are public GitHub prereleases, unsigned, opt-in, and may change incompatibly. Testers
 download the exact release asset from the GitHub prerelease page and should report the full release
-tag, pinned `engine-version.txt` value, and reproduction details. Plugin previews are executable
+tag, the engine version from the release notes ("Tested against OCRX engine ..."), and reproduction details. Plugin previews are executable
 release assets; they do not require prerelease NuGet SDK packages.

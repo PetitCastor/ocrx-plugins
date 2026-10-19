@@ -102,13 +102,18 @@ jobs:
           "prerelease=$(if ($manifest.channel -eq 'preview') { 'true' } else { 'false' })" >> $env:GITHUB_OUTPUT
           "plugins=$($manifest.plugins -join ',')" >> $env:GITHUB_ENV
 
-      - name: Read pinned engine version
+      # Always the latest engine release: the plugin ships to people running the latest engine, so
+      # that is what replay-parity must pass against. The resolved tag is recorded in the release
+      # notes, so "tested against" stays true even after newer engines ship.
+      - name: Resolve latest engine version
         id: engine_version
         if: steps.descriptor.outputs.skip != 'true'
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $engineVersion = (Get-Content engine-version.txt).Trim()
-          if (-not $engineVersion) { throw "engine-version.txt is empty." }
+          $engineVersion = (gh release view -R PetitCastor/ocrx-releases --json tagName --jq .tagName).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $engineVersion) { throw "Could not resolve the latest ocrx-releases release." }
           "version=$engineVersion" >> $env:GITHUB_OUTPUT
 
       - name: Setup .NET
@@ -117,17 +122,18 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Download pinned engine release
+      - name: Download engine release
         if: steps.descriptor.outputs.skip != 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          ENGINE_VERSION: ${{ steps.engine_version.outputs.version }}
         run: |
-          $engineVersion = (Get-Content engine-version.txt).Trim()
-          gh release download $engineVersion -R PetitCastor/ocrx-releases -p "Ocrx.Engine-*-win-x64.zip" -D .
+          gh release download $env:ENGINE_VERSION -R PetitCastor/ocrx-releases -p "Ocrx.Engine-*-win-x64.zip" -D .
+          if ($LASTEXITCODE -ne 0) { throw "Could not download engine release $env:ENGINE_VERSION." }
           Expand-Archive -Path "Ocrx.Engine-*-win-x64.zip" -DestinationPath engine
           $enginePath = (Get-ChildItem -Path engine -Filter "Ocrx.Engine.exe" -Recurse | Select-Object -First 1).FullName
-          if (-not $enginePath) { throw "Ocrx.Engine.exe not found after extracting the pinned release." }
+          if (-not $enginePath) { throw "Ocrx.Engine.exe not found after extracting the engine release." }
           "OCRX_ENGINE_PATH=$enginePath" >> $env:GITHUB_ENV
 
       - name: Restore
@@ -181,7 +187,7 @@ jobs:
         run: |
           $manifest = Get-Content ".github/release-manifests/$env:TAG.json" -Raw | ConvertFrom-Json
           @"
-          Tested against OCRX engine $env:ENGINE_VERSION (pinned in engine-version.txt).
+          Tested against OCRX engine $env:ENGINE_VERSION.
 
           $($manifest.notes)
           "@ | Out-File -Encoding utf8 release-notes.md

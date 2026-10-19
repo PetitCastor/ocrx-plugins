@@ -3,6 +3,14 @@ name: CI
 on:
   pull_request:
     branches: [master]
+  # Manual run, optionally against a specific engine release instead of the latest one — for
+  # bisecting an engine regression. Empty means latest.
+  workflow_dispatch:
+    inputs:
+      engine_version:
+        description: 'Engine release tag from ocrx-releases (e.g. v2.0.56). Empty = latest.'
+        required: false
+        default: ''
 
 # No job here pushes, releases, or comments — read-only checkout is all it needs.
 permissions:
@@ -71,6 +79,7 @@ jobs:
       # shipped yet (release.yml releases both, see its "Resolve" step), `changes` included. A descriptor
       # whose tag exists is history, including those that predate `changes`, and is not re-checked.
       - name: Validate the release descriptor this pull request ships
+        if: github.event_name == 'pull_request'
         shell: pwsh
         env:
           BASE_REF: origin/${{ github.base_ref }}
@@ -93,21 +102,31 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # Pinned per 00-OVERVIEW.md's "Plugins-repo CI" decision: this repo consumes Ocrx.Engine
-      # as a released binary, never a source checkout. OCRX_ENGINE_PATH is what
+      # This repo consumes Ocrx.Engine as a released binary, never a source checkout, and always the
+      # latest one: the engine that replay-parity runs against is the engine users run. A regression
+      # in a new engine release failing a plugin PR is the signal we want, not noise; to isolate it,
+      # re-run this workflow by hand with `engine_version` set. OCRX_ENGINE_PATH is what
       # Ocrx.Sdk.Testing's EngineLocator.Resolve() reads (see ReplayParityTests in both test
       # projects) to spawn the real engine for parity comparisons.
-      - name: Download pinned engine release
+      - name: Download engine release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          ENGINE_VERSION_OVERRIDE: ${{ inputs.engine_version }}
         run: |
-          $engineVersion = (Get-Content engine-version.txt).Trim()
+          $engineVersion = $env:ENGINE_VERSION_OVERRIDE
+          if (-not $engineVersion) {
+            $engineVersion = (gh release view -R PetitCastor/ocrx-releases --json tagName --jq .tagName).Trim()
+            if ($LASTEXITCODE -ne 0 -or -not $engineVersion) { throw "Could not resolve the latest ocrx-releases release." }
+          }
+          Write-Host "Testing against OCRX engine $engineVersion"
+          "Tested against OCRX engine $engineVersion" >> $env:GITHUB_STEP_SUMMARY
           gh release download $engineVersion -R PetitCastor/ocrx-releases -p "Ocrx.Engine-*-win-x64.zip" -D .
+          if ($LASTEXITCODE -ne 0) { throw "Could not download engine release $engineVersion." }
           Expand-Archive -Path "Ocrx.Engine-*-win-x64.zip" -DestinationPath engine
           $enginePath = (Get-ChildItem -Path engine -Filter "Ocrx.Engine.exe" -Recurse | Select-Object -First 1).FullName
           if (-not $enginePath) {
-            Write-Error "Ocrx.Engine.exe not found after extracting the pinned release."
+            Write-Error "Ocrx.Engine.exe not found after extracting the engine release."
             exit 1
           }
           echo "OCRX_ENGINE_PATH=$enginePath" >> $env:GITHUB_ENV
@@ -118,7 +137,7 @@ jobs:
       - name: Build
         run: dotnet build OcrxPlugins.slnx --no-restore -c Release
 
-      # Runs SignaturePlugin's unit suite plus its replay-parity tests against the pinned engine
+      # Runs SignaturePlugin's unit suite plus its replay-parity tests against the real engine
       # binary above. MissionPlugin and RefineryPlugin are frozen proofs of concept outside
       # OcrxPlugins.slnx and have no tests — a green run here says nothing about them.
       # Serialize test projects: xUnit collections cannot coordinate the Windows OCR engine

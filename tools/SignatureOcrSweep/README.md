@@ -18,8 +18,8 @@ Windows only; offline mode needs a Windows OCR language pack.
   measured crop and scale to equal the plan. It exits 1 otherwise. Trust offline sweep results only after
   the gate passes on the corpus you are sweeping.
 
-Engine binary: `--engine`, else `OCRX_ENGINE_PATH`, else `%LOCALAPPDATA%\OcrxEngine\current`. The plugins'
-pinned engine is in `engine-version.txt`. `--ocr-lang` applies to offline mode only; `gate` rejects it.
+Engine binary: `--engine`, else `OCRX_ENGINE_PATH`, else `%LOCALAPPDATA%\OcrxEngine\current`. CI tests against the latest
+engine release. `--ocr-lang` applies to offline mode only; `gate` rejects it.
 
 ## Manifest
 
