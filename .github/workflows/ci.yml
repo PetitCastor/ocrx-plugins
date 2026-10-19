@@ -83,19 +83,57 @@ jobs:
         shell: pwsh
         env:
           BASE_REF: origin/${{ github.base_ref }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           $touched = @(git diff --no-renames --diff-filter=AM --name-only "$env:BASE_REF...HEAD" -- '.github/release-manifests/*.json')
           if ($LASTEXITCODE -ne 0) { throw "git diff against $env:BASE_REF failed." }
+
+          # The version rules (strictly above the last stable release, bump large enough for `changes`)
+          # need that release. Ask GitHub rather than `git tag`: it is the list users download from, and
+          # --exclude-pre-releases keeps previews out of it. Looked up once, and only when a descriptor
+          # is actually being checked.
+          $latestStable = $null
+          if ($touched) {
+            . ./scripts/ReleaseDescriptor.Validate.ps1
+            $releases = gh release list --exclude-pre-releases --limit 100 --json tagName --jq '.[].tagName'
+            if ($LASTEXITCODE -ne 0) { throw 'gh release list failed.' }
+            $latestStable = Get-LatestStableTag -Tags @($releases)
+            Write-Host "Latest stable release: $latestStable"
+          }
+
           foreach ($path in ($touched | Where-Object { $_ })) {
             $tag = [System.IO.Path]::GetFileNameWithoutExtension($path)
             if (git tag --list $tag) {
               Write-Host "Skipping ${path}: $tag has already shipped."
               continue
             }
-            ./scripts/Test-ReleaseDescriptor.ps1 -Tag $tag
+            ./scripts/Test-ReleaseDescriptor.ps1 -Tag $tag -LatestStableTag $latestStable
             ./scripts/Build-Changelog.ps1 -Descriptor $path -OutDir "changelog-check" | Out-Null
             Write-Host "Validated $path"
           }
+
+      # Not a gate. A merge that touches the plugin without adding a descriptor is allowed and ships
+      # nothing (releases are opt-in, see RELEASING.md); this only tells the author, on the run page and
+      # the PR's checks, that their change will wait for the next descriptor. It must never fail CI, so
+      # the step swallows its own errors.
+      - name: Note unreleased plugin changes
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        shell: pwsh
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: |
+          try {
+            $src = @(git diff --no-renames --name-only "$env:BASE_REF...HEAD" -- 'src/SignaturePlugin')
+            $descriptors = @(git diff --no-renames --diff-filter=AM --name-only "$env:BASE_REF...HEAD" -- '.github/release-manifests/*.json')
+            if ($src -and -not $descriptors) {
+              Write-Host '::notice title=Unreleased plugin changes::This pull request changes src/SignaturePlugin without a release descriptor. The changes are not published when it merges; they ship with the next descriptor (see RELEASING.md).'
+            }
+          }
+          catch {
+            Write-Host "::warning::Could not check for unreleased plugin changes: $($_.Exception.Message)"
+          }
+          exit 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
