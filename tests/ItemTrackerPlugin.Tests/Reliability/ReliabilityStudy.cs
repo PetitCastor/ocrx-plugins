@@ -71,7 +71,9 @@ public static class ReliabilityStudy
 
         var resolver = HoldingResolver.Load(db, EndOfCorpus(db));
         MeasureLedger(resolver, report);
-        MeasureHoldings(resolver.ResolveAll(), report);
+        var holdings = resolver.ResolveAll();
+        MeasureHoldings(holdings, report);
+        MeasureFreight(db, holdings, report);
 
         MeasureLiveParity(db, files, workDir, options, report);
 
@@ -369,6 +371,44 @@ public static class ReliabilityStudy
 
         var supportByBuild = trainByBuild.ToDictionary(kv => kv.Key, kv => kv.Value.Count);
         return new PlacementCalibration(calibration, evaluation, factors, evaluationBrier, weakBuilds, supportByBuild);
+    }
+
+    /// <summary>
+    /// The freight total the game reported for each station, set beside the number of items the
+    /// ledger believes are stored there. The total is exact when the list was scrolled to its
+    /// end; the ledger is not, so a gap is information about the ledger, not an error in either.
+    /// </summary>
+    private static void MeasureFreight(TrackerDb db, IReadOnlyList<ItemHolding> holdings, ReliabilityReport report)
+    {
+        var ledger = holdings
+            .Where(h => h.IsAtStation && h.Root is not null)
+            .GroupBy(h => h.Root!.Key)
+            .ToDictionary(g => g.Key, g => g.Sum(h => h.Quantity));
+
+        using var cn = db.Open();
+        using var cmd = cn.CreateCommand();
+        cmd.CommandText = """
+            SELECT f.location_id, n.name, f.floor, f.total
+            FROM freight_total f LEFT JOIN location_name n ON n.location_id = f.location_id
+            ORDER BY COALESCE(f.total, f.floor) DESC, f.location_id
+            """;
+        using var r = cmd.ExecuteReader();
+        var withTotal = 0;
+        while (r.Read())
+        {
+            var id = r.GetString(0);
+            var name = r.IsDBNull(1) ? $"id:{id}" : r.GetString(1);
+            var count = ledger.GetValueOrDefault(id);
+            var total = r.IsDBNull(3) ? (long?)null : r.GetInt64(3);
+            if (total is not null) withTotal++;
+
+            report.FreightTable.Add(
+                $"| `{name}` | {(total is { } t ? t.ToString(CultureInfo.InvariantCulture) : "—")} | " +
+                $"{r.GetInt64(2)} | {count} | {(total is { } t2 ? (count - t2).ToString("+#;-#;0", CultureInfo.InvariantCulture) : "—")} |");
+        }
+
+        report.Counts["freight.stations"] = report.FreightTable.Count;
+        report.Counts["freight.stations_with_total"] = withTotal;
     }
 
     private static void MeasureHoldings(IReadOnlyList<ItemHolding> holdings, ReliabilityReport report)

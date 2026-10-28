@@ -35,6 +35,9 @@ public sealed class ReliabilityReport(string corpus, int files, long bytes)
     public List<string> MissExamples { get; } = [];
     public List<string> PlacementTable { get; } = [];
 
+    /// <summary>Per-station freight total against the ledger's count; a measurement, not a gate.</summary>
+    public List<string> FreightTable { get; } = [];
+
     /// <summary>
     /// How far a metric may slip before the ratchet calls it a regression. Covers rounding
     /// in the recorded baseline; counts are whole numbers, so for them it means "any".
@@ -180,6 +183,18 @@ public sealed class ReliabilityReport(string corpus, int files, long bytes)
             sb.AppendLine("This is what the resolver's age and update penalties are calibrated against.");
             sb.AppendLine();
             foreach (var row in PlacementTable) sb.AppendLine(row);
+        }
+
+        if (FreightTable.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("## Freight total vs ledger count");
+            sb.AppendLine();
+            sb.AppendLine("The item count of a station's freight list (cursor of the last page of a full scroll) against what the ledger holds there. A measurement, not a gate: the log total is a lower bound when the list was only partly scrolled, and the ledger starts empty.");
+            sb.AppendLine();
+            sb.AppendLine("| Station | Freight total | Floor | Ledger count | Ledger − total |");
+            sb.AppendLine("|---|---:|---:|---:|---:|");
+            foreach (var row in FreightTable) sb.AppendLine(row);
         }
 
         Section(sb, "Class-level units not found at their source, by cause", MissCauses.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Value} × {kv.Key}"));
