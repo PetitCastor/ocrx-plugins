@@ -628,6 +628,8 @@ public sealed class LogIngestor(TrackerDb db, string logDir, DateTimeOffset? fro
     /// raises the floor. A last page sets the total when it reaches past the floor and is no
     /// lower than any total before it: a list narrowed by search or filter ends sooner, and a
     /// total that only ever rises is the price of not telling a narrowed list from a short one.
+    /// The floor is permanent for the same reason, and an emptied station (a last page ending at
+    /// 0) is never recorded: both keep their old, higher value until the store is rebuilt.
     /// </summary>
     private static bool ApplyFreightPage(
         SqliteConnection cn, SqliteTransaction tx, string locationId, bool hasNextPage, long end, DateTimeOffset at)
@@ -661,13 +663,12 @@ public sealed class LogIngestor(TrackerDb db, string logDir, DateTimeOffset? fro
         using var cmd = cn.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = """
-            INSERT INTO freight_total(location_id, floor, total, total_ts, pages)
-            VALUES($l, $f, $t, $ts, 1)
+            INSERT INTO freight_total(location_id, floor, total, total_ts)
+            VALUES($l, $f, $t, $ts)
             ON CONFLICT(location_id) DO UPDATE SET
                 floor    = $f,
                 total    = $t,
-                total_ts = COALESCE($ts, total_ts),
-                pages    = pages + 1
+                total_ts = COALESCE($ts, total_ts)
             """;
         cmd.Parameters.AddWithValue("$l", locationId);
         cmd.Parameters.AddWithValue("$f", floor);

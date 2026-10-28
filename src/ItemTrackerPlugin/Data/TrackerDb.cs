@@ -412,8 +412,7 @@ public sealed class TrackerDb
             location_id TEXT PRIMARY KEY,
             floor       INTEGER NOT NULL DEFAULT 0,
             total       INTEGER,
-            total_ts    TEXT,
-            pages       INTEGER NOT NULL DEFAULT 0
+            total_ts    TEXT
         );
 
         -- Lines that move nothing but say what the player was doing: a stack press, a station

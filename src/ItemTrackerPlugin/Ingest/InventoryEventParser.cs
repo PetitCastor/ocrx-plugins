@@ -495,10 +495,10 @@ public static partial class InventoryEventParser
     private static InventoryEvent? ParseShopBuy(LogLine line)
     {
         var m = ShopBuy().Match(line.Rest);
-        if (!m.Success) return null;
+        if (!m.Success || !int.TryParse(m.Groups["qty"].Value, out var quantity)) return null;
 
         return new ShopBuyRequested(
-            line.Timestamp, m.Groups["shop"].Value, m.Groups["item"].Value, int.Parse(m.Groups["qty"].Value),
+            line.Timestamp, m.Groups["shop"].Value, m.Groups["item"].Value, quantity,
             double.TryParse(m.Groups["price"].Value, System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out var price) ? price : 0);
     }

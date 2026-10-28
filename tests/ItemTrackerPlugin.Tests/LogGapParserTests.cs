@@ -127,6 +127,15 @@ public class LogGapParserTests
     }
 
     [Fact]
+    public void A_kiosk_quantity_too_large_to_read_is_dropped_not_thrown()
+    {
+        Assert.Null(Event(
+            "<2026-08-09T12:01:52.875Z> [Notice] <CEntityComponentShopUIProvider::SendShopBuyRequest> " +
+            "Sending SShopBuyRequest - playerId[1] shopId[2] shopName[SCShop_Cargo_Office] kioskId[3] " +
+            "client_price[1.0] itemClassGUID[x] itemName[grin_tractor_01] quantity[99999999999]  [Team_CoreGameplayFeatures][Shops][UI]"));
+    }
+
+    [Fact]
     public void Reads_the_answer_to_a_kiosk_request()
     {
         var ev = Event(
