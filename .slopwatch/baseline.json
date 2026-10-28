@@ -1,7 +1,107 @@
 {
   "version": 1,
   "createdAt": "2026-09-05T13:12:19.2550848+00:00",
-  "updatedAt": "2026-09-11T00:00:00.0000000+00:00",
-  "description": "Baseline emptied when MissionPlugin.Tests and RefineryPlugin.Tests were removed; both entries lived in those projects.",
-  "entries": []
+  "updatedAt": "2026-10-28T20:13:18.3806109+00:00",
+  "description": "ItemTrackerPlugin's empty catches, ported verbatim from inventory-tracker (TASK-IT-01); each carries the reason it swallows. Emptied before that when MissionPlugin.Tests and RefineryPlugin.Tests were removed.",
+  "entries": [
+    {
+      "hash": "ebe2265de6d32b17",
+      "ruleId": "SW003",
+      "filePath": "src/ItemTrackerPlugin/App/FileLoggerProvider.cs",
+      "lineNumber": 50,
+      "codeSnippet": "catch (Exception)\n            {\n                // Keep appending to the oversized file; the next entry tries again.\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-10-28T20:13:18.3805727+00:00"
+    },
+    {
+      "hash": "db9b9c7b1e29df3b",
+      "ruleId": "SW003",
+      "filePath": "src/ItemTrackerPlugin/App/FileLoggerProvider.cs",
+      "lineNumber": 60,
+      "codeSnippet": "catch (Exception)\n            {\n                // A locked or read-only file costs the entry, not the app.\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-10-28T20:13:18.3805926+00:00"
+    },
+    {
+      "hash": "fb3bc08773559031",
+      "ruleId": "SW003",
+      "filePath": "src/ItemTrackerPlugin/App/AppConfig.cs",
+      "lineNumber": 92,
+      "codeSnippet": "catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)\n        {\n            // Best effort. Losing the copy is bad; failing to start over it would be worse.\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-10-28T20:13:18.3805948+00:00"
+    },
+    {
+      "hash": "cde603fffe5ea1d2",
+      "ruleId": "SW003",
+      "filePath": "src/ItemTrackerPlugin/Naming/GameLocalization.cs",
+      "lineNumber": 73,
+      "codeSnippet": "catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)\n        {\n            // The game can hold user.cfg open while writing it; English is its default.\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-10-28T20:13:18.3805972+00:00"
+    },
+    {
+      "hash": "73ebb4086faf15d9",
+      "ruleId": "SW003",
+      "filePath": "src/ItemTrackerPlugin/Ingest/LogFileLocator.cs",
+      "lineNumber": 170,
+      "codeSnippet": "catch (IOException)\n        {\n            // The game rotates the file out from under us; the next pass tries again.\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-10-28T20:13:18.3805991+00:00"
+    },
+    {
+      "hash": "8f729701c585e073",
+      "ruleId": "SW003",
+      "filePath": "src/ItemTrackerPlugin/Ingest/LogFileLocator.cs",
+      "lineNumber": 200,
+      "codeSnippet": "catch (IOException)\n        {\n            // Rotated out from under us; the next pass tries again.\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-10-28T20:13:18.3806009+00:00"
+    },
+    {
+      "hash": "a0d8a87dcb2673c0",
+      "ruleId": "SW003",
+      "filePath": "src/ItemTrackerPlugin/Ingest/LogWatchService.cs",
+      "lineNumber": 136,
+      "codeSnippet": "catch (SemaphoreFullException) { /* a pass is already pending */ }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-10-28T20:13:18.3806026+00:00"
+    },
+    {
+      "hash": "228b840dbced81d3",
+      "ruleId": "SW003",
+      "filePath": "src/ItemTrackerPlugin/Ingest/LogWatchService.cs",
+      "lineNumber": 137,
+      "codeSnippet": "catch (ObjectDisposedException) { /* shutting down; a watcher event raced Dispose */ }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-10-28T20:13:18.3806041+00:00"
+    },
+    {
+      "hash": "c9a75d390e1fc18b",
+      "ruleId": "SW003",
+      "filePath": "src/ItemTrackerPlugin/Ingest/LogWatchService.cs",
+      "lineNumber": 218,
+      "codeSnippet": "catch (ObjectDisposedException) { }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-10-28T20:13:18.3806054+00:00"
+    },
+    {
+      "hash": "54a906ce0343d376",
+      "ruleId": "SW003",
+      "filePath": "src/ItemTrackerPlugin/Ingest/LogWatchService.cs",
+      "lineNumber": 373,
+      "codeSnippet": "catch (OperationCanceledException)\n        {\n            // Shutting down mid-download; the next launch retries.\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-10-28T20:13:18.3806073+00:00"
+    },
+    {
+      "hash": "b11f7420c721020c",
+      "ruleId": "SW003",
+      "filePath": "tests/ItemTrackerPlugin.Tests/Playtest/PlaytestReplay.cs",
+      "lineNumber": 118,
+      "codeSnippet": "catch (IOException) { /* a pooled handle outlived the clear; the temp dir is harmless */ }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-10-28T20:13:18.3806103+00:00"
+    }
+  ]
 }

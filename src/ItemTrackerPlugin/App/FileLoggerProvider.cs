@@ -1,0 +1,87 @@
+using Microsoft.Extensions.Logging;
+
+namespace ItemTrackerPlugin.App;
+
+/// <summary>
+/// Writes the tracker's log to <c>tracker.log</c> beside settings.json. The plugin's console
+/// belongs to the engine that launched it: without this file a failed or silent ingest pass
+/// leaves no trace of its own, and "the list did not update" cannot be told apart from "the logs were
+/// never read".
+/// <para>
+/// One file is kept, rolled over to <c>tracker.log.1</c> past <see cref="MaxBytes"/>. Lines are
+/// few — routine passes log at Debug, which the host filters out — so each is appended with
+/// the file opened and closed around it, and nothing is left unflushed when the app exits.
+/// </para>
+/// </summary>
+public sealed class FileLoggerProvider(string filePath) : ILoggerProvider
+{
+    public const long MaxBytes = 1024 * 1024;
+
+    /// <summary>Beside settings.json and the database: this install's private state.</summary>
+    public static string DefaultPath => Path.Combine(
+        Path.GetDirectoryName(AppConfig.DefaultPath) ?? ".", "tracker.log");
+
+    private readonly Lock _gate = new();
+
+    public string FilePath { get; } = filePath;
+
+    public ILogger CreateLogger(string categoryName) => new FileLogger(this, ShortName(categoryName));
+
+    /// <summary>"ItemTrackerPlugin.Ingest.LogWatchService" reads as "LogWatchService".</summary>
+    private static string ShortName(string category)
+    {
+        var dot = category.LastIndexOf('.');
+        return dot >= 0 && dot < category.Length - 1 ? category[(dot + 1)..] : category;
+    }
+
+    /// <summary>Appends one formatted entry. Never throws: logging must not be the thing
+    /// that takes the tracker down.</summary>
+    internal void Write(string entry)
+    {
+        lock (_gate)
+        {
+            // Apart from the append: a rollover that fails (tracker.log.1 open in an editor)
+            // must not cost the entry, or every later one would fail the same way.
+            try
+            {
+                var info = new FileInfo(FilePath);
+                if (info.Exists && info.Length > MaxBytes) Roll(info.Length);
+            }
+            catch (Exception)
+            {
+                // Keep appending to the oversized file; the next entry tries again.
+            }
+
+            try
+            {
+                if (Path.GetDirectoryName(FilePath) is { Length: > 0 } dir) Directory.CreateDirectory(dir);
+                File.AppendAllText(FilePath, entry);
+            }
+            catch (Exception)
+            {
+                // A locked or read-only file costs the entry, not the app.
+            }
+        }
+    }
+
+    /// <summary>
+    /// Moves the full file aside. If tracker.log.1 stays locked — an editor or antivirus
+    /// holding it — the move fails on every entry, so past twice the cap the current file is
+    /// emptied instead: losing old lines beats a log that grows without bound.
+    /// </summary>
+    private void Roll(long length)
+    {
+        try
+        {
+            File.Move(FilePath, FilePath + ".1", overwrite: true);
+        }
+        catch (Exception) when (length > 2 * MaxBytes)
+        {
+            File.WriteAllText(FilePath, "");
+        }
+    }
+
+    public void Dispose()
+    {
+    }
+}
