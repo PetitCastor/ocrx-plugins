@@ -1,0 +1,7 @@
+# ItemTrackerPlugin replay study corpus: byte-exact, so the baseline's fingerprint (SHA-256 per
+# file) matches on every checkout whatever core.autocrlf says.
+tests/ItemTrackerPlugin.Tests/Reliability/Corpus/** -text
+
+# ItemTrackerPlugin playtest fixtures: kept byte-exact too, so a checkout never rewrites the lines
+# the tests read.
+tests/ItemTrackerPlugin.Tests/Fixtures/** -text

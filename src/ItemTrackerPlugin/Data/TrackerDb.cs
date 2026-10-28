@@ -1,0 +1,427 @@
+using ItemTrackerPlugin.Ingest;
+using Microsoft.Data.Sqlite;
+
+namespace ItemTrackerPlugin.Data;
+
+/// <summary>
+/// Owns the SQLite store and its schema. Connections are cheap and short-lived;
+/// callers open one per unit of work via <see cref="Open"/>.
+/// </summary>
+public sealed class TrackerDb
+{
+    public string Path { get; }
+    private readonly string _connectionString;
+
+    public TrackerDb(string path)
+    {
+        Path = path;
+        var dir = System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(path));
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
+        // Private cache, not shared: shared-cache mode moves contention to table-level
+        // locks within the process and surfaces as SQLITE_LOCKED, which the busy handler
+        // cannot retry. WAL already gives concurrent readers alongside the single writer,
+        // which is exactly the shape here (background ingest writes, UI reads).
+        _connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = path,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            DefaultTimeout = 30,
+        }.ToString();
+    }
+
+    /// <summary>The default store location, alongside the user's other app data.</summary>
+    public static string DefaultPath => ResolveDefaultPath(
+        Environment.GetEnvironmentVariable("INVENTORYTRACKER_DATA_DIR"),
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+
+    internal static string ResolveDefaultPath(string? dataDirectory, string localApplicationDataPath)
+    {
+        var root = string.IsNullOrEmpty(dataDirectory)
+            ? System.IO.Path.Combine(localApplicationDataPath, "OCRX", "ItemTracker")
+            : dataDirectory;
+        return System.IO.Path.Combine(root, "tracker.db");
+    }
+
+    public SqliteConnection Open()
+    {
+        var cn = new SqliteConnection(_connectionString);
+        cn.Open();
+
+        // busy_timeout makes a writer wait for a competing one rather than failing
+        // immediately; the UI's "rebuild now" and the background sweep can overlap.
+        Execute(cn, """
+            PRAGMA journal_mode=WAL;
+            PRAGMA synchronous=NORMAL;
+            PRAGMA foreign_keys=ON;
+            PRAGMA busy_timeout=30000;
+            """);
+        return cn;
+    }
+
+    /// <summary>
+    /// Bump whenever <see cref="Schema"/> changes shape. The store is a derived cache —
+    /// logs are the source of truth — so a mismatch is resolved by rebuilding rather
+    /// than by writing migrations.
+    /// <para>
+    /// 8 -> 9 is required for more than the new <c>session.unrecognised</c> /
+    /// <c>session.last_line_ts</c> columns: it also forces every existing store to rebuild
+    /// from scratch. Before this fix, the parser silently read zero moves from any build
+    /// 12519617+ log — but it still advanced each session's byte watermark past those lines
+    /// and, for a rotated file, marked it <c>complete</c>. Without the bump, the fixed parser
+    /// would never be given those bytes to re-read: it would resume exactly where the broken
+    /// one left off, or skip the file entirely.
+    /// </para>
+    /// <para>9 -> 10 adds <c>session.cur_loc_id</c> / <c>cur_loc_since</c>; 10 -> 11 adds <c>move.action</c>;
+    /// 11 -> 12 adds <c>session.build</c>; 12 -> 13 adds <c>session.first_loc_id</c> /
+    /// <c>first_loc_since</c>; 13 -> 14 adds <c>attachment_sighting</c>; 14 -> 15 adds
+    /// <c>wiki_location</c> and <c>place_name</c>; 15 -> 16 adds <c>vehicle</c> and <c>wiki_vehicle</c>.</para>
+    /// <para>16 -> 17 adds bounded, watermark-bound ingest correlation snapshots.</para>
+    /// </summary>
+    private const int SchemaVersion = 17;
+
+    public void Initialize()
+    {
+        using var cn = Open();
+        using var transaction = cn.BeginTransaction();
+
+        // A store built before versioning existed reports null, which is still a mismatch.
+        if (HasTable(cn, "move", transaction) && ReadMeta(cn, "schema_version", transaction) != SchemaVersion)
+        {
+            Execute(cn, DropAll, transaction);
+        }
+
+        Execute(cn, Schema, transaction);
+        WriteMeta(cn, "schema_version", SchemaVersion, transaction);
+
+        // Same tables, different extraction: what an older parser left behind is missing
+        // whatever the newer one learned to read, and completed files are never reopened
+        // on their own. Schema 9 had to be bumped just to force that; this does it for any
+        // parser change without touching the schema.
+        if (ReadMeta(cn, "parser_version", transaction) != InventoryEventParser.Version)
+        {
+            Execute(cn, ClearIngest, transaction);
+            WriteMeta(cn, "parser_version", InventoryEventParser.Version, transaction);
+        }
+
+        transaction.Commit();
+    }
+
+    private static void WriteMeta(SqliteConnection cn, string key, int value, SqliteTransaction? transaction = null)
+    {
+        using var stamp = cn.CreateCommand();
+        stamp.Transaction = transaction;
+        stamp.CommandText =
+            "INSERT INTO meta(key, value) VALUES($k, $v) " +
+            "ON CONFLICT(key) DO UPDATE SET value = $v";
+        stamp.Parameters.AddWithValue("$k", key);
+        stamp.Parameters.AddWithValue("$v", value.ToString());
+        stamp.ExecuteNonQuery();
+    }
+
+    private static bool HasTable(SqliteConnection cn, string name, SqliteTransaction? transaction = null)
+    {
+        using var probe = cn.CreateCommand();
+        probe.Transaction = transaction;
+        probe.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = $n";
+        probe.Parameters.AddWithValue("$n", name);
+        return probe.ExecuteScalar() is not null;
+    }
+
+    private static int? ReadMeta(SqliteConnection cn, string key, SqliteTransaction? transaction = null)
+    {
+        if (!HasTable(cn, "meta", transaction)) return null;
+
+        using var probe = cn.CreateCommand();
+        probe.Transaction = transaction;
+        probe.CommandText = "SELECT value FROM meta WHERE key = $k";
+        probe.Parameters.AddWithValue("$k", key);
+        return probe.ExecuteScalar() is string s && int.TryParse(s, out var v) ? v : null;
+    }
+
+    /// <summary>Drops everything derived from logs. Wiki name cache is kept — it is expensive to refetch.</summary>
+    public void ResetIngest()
+    {
+        using var cn = Open();
+        using var transaction = cn.BeginTransaction();
+        Execute(cn, ClearIngest, transaction);
+        transaction.Commit();
+    }
+
+    private const string ClearIngest = """
+        DELETE FROM attachment_sighting;
+        DELETE FROM ingest_correlation;
+        DELETE FROM move;
+        DELETE FROM session;
+        DELETE FROM location_name;
+        DELETE FROM container_class;
+        DELETE FROM vehicle;
+        DELETE FROM attachment;
+        DELETE FROM place_evidence;
+        """;
+
+    private static void Execute(SqliteConnection cn, string sql, SqliteTransaction? transaction = null)
+    {
+        using var cmd = cn.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText = sql;
+        cmd.ExecuteNonQuery();
+    }
+
+    private const string Schema = """
+        CREATE TABLE IF NOT EXISTS session (
+            id           INTEGER PRIMARY KEY,
+            path         TEXT    NOT NULL UNIQUE,
+            first_ts     TEXT,
+            last_ts      TEXT,
+            byte_offset  INTEGER NOT NULL DEFAULT 0,
+            complete     INTEGER NOT NULL DEFAULT 0,
+            -- Running count of UnrecognisedMove lines seen across every ingest pass over
+            -- this file. Added to, never overwritten, so it keeps growing as a live file
+            -- does instead of resetting on each pass.
+            unrecognised INTEGER NOT NULL DEFAULT 0,
+            -- Timestamp of the newest well-formed log line in the file, independent of the
+            -- inception-date filter. Unlike last_line_ts, first_ts is also captured before
+            -- that filter (so DiscardIfRotated can identify a file regardless of where the
+            -- cutoff falls) and is therefore set for any file with any line at all; last_ts
+            -- is the one still gated by the filter. This is what lets diagnostics say "your
+            -- newest log is from before your inception date" instead of a file with real
+            -- content looking empty.
+            last_line_ts TEXT,
+            -- Where the player stood at byte_offset. The game writes it once, on arrival,
+            -- so a pass that resumes mid-file has no other way to know it — and without
+            -- it every container opened afterwards goes unplaced.
+            cur_loc_id    TEXT,
+            cur_loc_since TEXT,
+            -- The game build that wrote the file. A change of build is a game update, and
+            -- updates move stored items server-side without a single log line: after build
+            -- 12519617 every item checked had been moved to where the player next spawned.
+            build         INTEGER,
+            -- Where the player first stood in this file: the spawn. The first session of a
+            -- new build spawned where the update moved the player's stored items to.
+            first_loc_id    TEXT,
+            first_loc_since TEXT
+        );
+
+        -- Bounded parser correlation state is committed with the matching byte watermark.
+        -- It is versioned independently so an incompatible snapshot is never resumed.
+        CREATE TABLE IF NOT EXISTS ingest_correlation (
+            session_id    INTEGER PRIMARY KEY REFERENCES session(id) ON DELETE CASCADE,
+            state_version INTEGER NOT NULL,
+            byte_offset   INTEGER NOT NULL,
+            generation    INTEGER NOT NULL,
+            state_json    TEXT NOT NULL
+        );
+
+        -- One row per item relocation.
+        -- request_no is NOT a stable key: it restarts at 1 in every log file *and*
+        -- resets again mid-file whenever the client changes shard (observed three
+        -- times in one 16 Jul log). Identity is therefore the line's byte offset,
+        -- which is unique and stable across re-ingest.
+        CREATE TABLE IF NOT EXISTS move (
+            id          INTEGER PRIMARY KEY,
+            session_id  INTEGER NOT NULL REFERENCES session(id) ON DELETE CASCADE,
+            line_offset INTEGER NOT NULL,
+            request_no  INTEGER NOT NULL,
+            ts          TEXT    NOT NULL,
+            player      TEXT,
+            player_id   TEXT,
+            move_type   TEXT    NOT NULL,
+            item_class  TEXT    NOT NULL,
+            -- NULL for every type except Store: the log names an exact entity only there.
+            -- Class-level moves say "one of these moved", not which one.
+            item_geid   TEXT,
+            amount      INTEGER NOT NULL DEFAULT 1,
+            -- Position within a multi-select drag, whose several classes all share one
+            -- log line and therefore one byte offset. 0 for an ordinary single move.
+            item_ix     INTEGER NOT NULL DEFAULT 0,
+            src_raw     TEXT,
+            src_kind    TEXT,
+            src_key     TEXT,
+            tgt_raw     TEXT,
+            tgt_kind    TEXT,
+            tgt_key     TEXT,
+            caller      TEXT,
+            -- The Queued line's action[], when it is anything but None. Only "Carry" is seen:
+            -- an item picked into the player's hand, which the ledger treats as on the player.
+            action      TEXT,
+            result      TEXT,
+            UNIQUE(session_id, line_offset, item_ix)
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_move_geid  ON move(item_geid, ts);
+        CREATE INDEX IF NOT EXISTS ix_move_class ON move(item_class, ts);
+        CREATE INDEX IF NOT EXISTS ix_move_tgt   ON move(tgt_kind, tgt_key);
+
+        CREATE TABLE IF NOT EXISTS location_name (
+            location_id    TEXT PRIMARY KEY,
+            name           TEXT NOT NULL,
+            first_seen     TEXT,
+            evidence_count INTEGER NOT NULL DEFAULT 0
+        );
+
+        -- Opening a container proves it was within reach, so the player's location at
+        -- that moment places it. For SCU boxes and lootable crates -- which are set down
+        -- and never "stored" anywhere -- this is the only thing that locates them at all.
+        -- The class is nullable because a container the player only ever moves items in and
+        -- out of is never named by any log line: the row then exists purely to pin it.
+        -- capacity is in µSCU, from the drag lines: 2,000,000 is a 2 SCU crate. It is the
+        -- only description of a container the game never names.
+        CREATE TABLE IF NOT EXISTS container_class (
+            geid           TEXT PRIMARY KEY,
+            class_name     TEXT,
+            last_seen      TEXT,
+            last_loc_id    TEXT,
+            last_loc_ts    TEXT,
+            capacity       INTEGER
+        );
+
+        -- Ships, by geid. class_name comes from the line written when the player leaves a pilot
+        -- seat; retrieved_* from the one written when the ship is called out of storage, which
+        -- happens where the player stands. A ship's lockers are linked to it by class only.
+        CREATE TABLE IF NOT EXISTS vehicle (
+            geid             TEXT PRIMARY KEY,
+            class_name       TEXT,
+            last_seen        TEXT,
+            retrieved_ts     TEXT,
+            retrieved_loc_id TEXT
+        );
+
+        -- The star-citizen.wiki vehicle list: what a ship class is called in game
+        -- ("GLSN_Shiv" -> "Grey's Shiv"). Kept across rebuilds for the same reason as wiki_item.
+        CREATE TABLE IF NOT EXISTS wiki_vehicle (
+            class_name   TEXT PRIMARY KEY,
+            game_name    TEXT,
+            name         TEXT,
+            manufacturer TEXT,
+            web_url      TEXT,
+            fetched_at   TEXT
+        );
+
+        -- Ports worn on the player's body, from <AttachmentReceived>. Re-emitted on every
+        -- spawn, so only the newest sighting per entity is kept. This is the only
+        -- authoritative enumeration the game ever logs, and the only positive proof that
+        -- an item is on the player rather than sitting at a station. The login placeholder
+        -- set is left out: none of it is ever the player's.
+        CREATE TABLE IF NOT EXISTS attachment (
+            geid       TEXT PRIMARY KEY,
+            class_name TEXT NOT NULL,
+            port       TEXT,
+            last_seen  TEXT NOT NULL
+        );
+
+        -- Every persistent <AttachmentReceived> line, in log order. The attachment table above
+        -- keeps only each entity's newest sighting; this keeps every enumeration of the body,
+        -- so an older one can still be read as what the player had on at that moment.
+        --   burst_id    line_offset of the first line of the burst this line belongs to: the
+        --               game writes a whole enumeration within a millisecond or two, and
+        --               lines less than a second apart are one burst.
+        --   parent_geid for a sub-attachment port (a helmet's visor, a weapon's magazine), the
+        --               item it hangs off. A burst lists a parent immediately before its
+        --               children, so it is the nearest preceding non-child line of the burst.
+        --   placeholder the stand-in set the game attaches on every login before the real
+        --               loadout arrives (geids 2000xxxxxxxx). Kept, since the burst still dates
+        --               the login, but never read as something the player has on.
+        CREATE TABLE IF NOT EXISTS attachment_sighting (
+            session_id  INTEGER NOT NULL REFERENCES session(id) ON DELETE CASCADE,
+            line_offset INTEGER NOT NULL,
+            ts          TEXT    NOT NULL,
+            geid        TEXT    NOT NULL,
+            class_name  TEXT    NOT NULL,
+            port        TEXT    NOT NULL,
+            burst_id    INTEGER NOT NULL,
+            parent_geid TEXT,
+            placeholder INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (session_id, line_offset)
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_sighting_geid ON attachment_sighting(geid, ts);
+
+        -- Corroboration for what a location id actually is. The internal string the game
+        -- pairs with the id ("RR_JP_NyxCastra") is a legacy asset name that matches neither
+        -- the place's real name ("Stanton Gateway") nor its system (Nyx), so both are voted
+        -- on from sightings gathered while the player was standing there.
+        --   kind = 'name'   -> <Calculate Route> "Projected Start Location is X"
+        --   kind = 'system' -> the system segment of a streamed object-container path
+        CREATE TABLE IF NOT EXISTS place_evidence (
+            location_id TEXT    NOT NULL,
+            kind        TEXT    NOT NULL,
+            value       TEXT    NOT NULL,
+            hits        INTEGER NOT NULL DEFAULT 0,
+            last_seen   TEXT,
+            PRIMARY KEY (location_id, kind, value)
+        );
+
+        CREATE TABLE IF NOT EXISTS wiki_item (
+            class_name   TEXT PRIMARY KEY,
+            uuid         TEXT,
+            display_name TEXT,
+            manufacturer TEXT,
+            type_label   TEXT,
+            image_url    TEXT,
+            web_url      TEXT,
+            fetched_at   TEXT
+        );
+
+        -- The star-citizen.wiki location list: the reference every place name is checked
+        -- against. Kept across rebuilds for the same reason as wiki_item.
+        CREATE TABLE IF NOT EXISTS wiki_location (
+            uuid        TEXT PRIMARY KEY,
+            name        TEXT NOT NULL,
+            system      TEXT NOT NULL,
+            parent      TEXT,
+            parent_type TEXT,
+            type        TEXT,
+            fetched_at  TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_wiki_location_name ON wiki_location(name);
+
+        -- The name each place is shown under, and whether it is confirmed. Keyed by the
+        -- internal string the game pairs with a station's inventory, which outlives the ids
+        -- the game re-issues; a place with no such string is keyed 'id:<location id>'.
+        --   status     'confirmed' rows are final: the resolver never touches them again.
+        --              'pending' and 'unresolved' rows are re-resolved on every ingest pass.
+        --   sources    the PlaceNameSource flags backing the name, as an integer.
+        --   decided_by 'auto' when two sources agreed, 'user' when the player said so.
+        -- Not derived from the logs alone, and the player's confirmations cannot be rebuilt,
+        -- so it survives a rebuild.
+        CREATE TABLE IF NOT EXISTS place_name (
+            place_key  TEXT PRIMARY KEY,
+            name       TEXT,
+            status     TEXT    NOT NULL,
+            sources    INTEGER NOT NULL DEFAULT 0,
+            planet     TEXT,
+            decided_by TEXT    NOT NULL DEFAULT 'auto',
+            updated_at TEXT
+        );
+
+        -- Dropped in schema 8. It was rebuilt from wiki_item on every catalogue refresh
+        -- (~12k rows) and never read by anything: the name search it was built for was
+        -- never written. Reinstate it alongside the feature, not before.
+        DROP TABLE IF EXISTS wiki_item_fts;
+
+        CREATE TABLE IF NOT EXISTS meta (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        );
+        """;
+
+    /// <summary>
+    /// Everything derived from the logs, dropped and rebuilt on a schema mismatch. The wiki
+    /// catalogues are deliberately not in here: they cost ~72 network requests to refill and
+    /// are not derived from anything a schema change would invalidate. Nor is place_name,
+    /// which holds the player's own confirmations.
+    /// </summary>
+    private const string DropAll = """
+        DROP TABLE IF EXISTS attachment_sighting;
+        DROP TABLE IF EXISTS ingest_correlation;
+        DROP TABLE IF EXISTS move;
+        DROP TABLE IF EXISTS session;
+        DROP TABLE IF EXISTS location_name;
+        DROP TABLE IF EXISTS container_class;
+        DROP TABLE IF EXISTS vehicle;
+        DROP TABLE IF EXISTS attachment;
+        DROP TABLE IF EXISTS place_evidence;
+        """;
+}
