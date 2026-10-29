@@ -1,3 +1,4 @@
+using ItemTrackerPlugin.Overlay;
 using ItemTrackerPlugin.Screen;
 using Ocrx.Sdk;
 using Ocrx.Sdk.Testing;
@@ -10,6 +11,10 @@ public sealed class ItemTrackerScreenTests
     {
         Engine = new FakePluginServices().Engine with { ReplayMode = true },
     };
+
+    /// <summary>The screen reader's records, without the status lines that go to the overlay.</summary>
+    private static List<CaptureRecord> Observations(FakePluginServices services) =>
+        services.Emitted.Where(r => !StatusRecord.IsStatus(r)).ToList();
 
     private static TickContext Tick(IPluginServices services, string right, string left = "PERSONAL/ ALL") =>
         TickContext.ForTesting(
@@ -91,7 +96,7 @@ public sealed class ItemTrackerScreenTests
 
         for (var i = 0; i < 4; i++) await tracker.OnTickAsync(TickContext.ForTesting(tick, services), default);
 
-        Assert.Single(services.Emitted);
+        Assert.Single(Observations(services));
     }
 
     [Fact]
@@ -133,7 +138,7 @@ public sealed class ItemTrackerScreenTests
 
         await tracker.OnTickAsync(TickContext.ForTesting(tick, services), default);
 
-        var record = Assert.Single(services.Emitted);
+        var record = Assert.Single(Observations(services));
         Assert.Equal("ItemTrackerPlugin", record.Plugin);
         Assert.Equal(RecordKind.Observation, record.Kind);
         Assert.Equal("CRUZ Dark", record.Fields!["name"]);

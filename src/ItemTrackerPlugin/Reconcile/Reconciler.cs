@@ -65,7 +65,32 @@ public sealed class Reconciler(ItemNamer namer, TimeZoneInfo? zone = null)
             .Select(s => Arrival(input, s))
             .ToList();
 
-        return new Reconciliation(holdings, arrivals, coverage, unplaced);
+        return new Reconciliation(holdings, arrivals, coverage, unplaced)
+        {
+            Pages = PageStatuses(sightings.Values, rows.Zip(holdings).ToList(), arrivals),
+        };
+    }
+
+    /// <summary>
+    /// The kinds each page showed, and how many of them are verified. A kind sits on the page of its
+    /// last sighting, and is verified when every placement of it at the station is, or when the screen
+    /// showed it with no ledger side at all.
+    /// </summary>
+    private static List<PageStatus> PageStatuses(
+        IEnumerable<Sighting> sightings, List<(ReconcileRow Row, ReconciledHolding Held)> judged, List<UnknownArrival> arrivals) =>
+        sightings
+            .Where(s => s is { Observed: > 0, Page: not null })
+            .GroupBy(s => (s.LocationId, Page: s.Page!.Value))
+            .Select(g => new PageStatus(g.Key.LocationId, g.Key.Page, g.Count(), g.Count(s => KindVerified(s, judged, arrivals))))
+            .OrderBy(p => p.LocationId, StringComparer.Ordinal).ThenBy(p => p.Page)
+            .ToList();
+
+    private static bool KindVerified(
+        Sighting s, List<(ReconcileRow Row, ReconciledHolding Held)> judged, List<UnknownArrival> arrivals)
+    {
+        var held = judged.Where(j => j.Row.Station == s.LocationId && j.Row.Key == s.Key).Select(j => j.Held.State).ToList();
+        var came = arrivals.Where(a => a.LocationId == s.LocationId && ItemNamer.Key(a.Name) == s.Key).Select(a => a.State).ToList();
+        return held.Count + came.Count > 0 && held.Concat(came).All(state => state == PlacementState.Verified);
     }
 
     /// <summary>The station an item sits at directly; one inside a container there is not on the kiosk's grid.</summary>
@@ -165,8 +190,12 @@ public sealed class Reconciler(ItemNamer namer, TimeZoneInfo? zone = null)
         var state = PlacementState.Deduced;
         var reason = $"{Arrived(h.LastMoveType)} {Local(h.LastMove).ToString("d MMM", CultureInfo.InvariantCulture)}, not seen on screen since";
 
-        if (row is { Station: { } station, Key: { } key }
-            && sightings.TryGetValue((station, key), out var s) && s.At > h.LastMove)
+        // Any sighting of the kind dates a look at it, even one before the item's last move.
+        var sighting = row is { Station: { } station, Key: { } key } && sightings.TryGetValue((station, key), out var found)
+            ? found
+            : null;
+
+        if (sighting is { } s && s.At > h.LastMove)
         {
             var had = ledgerAt[s];
             if (s.Observed == had)
@@ -185,7 +214,7 @@ public sealed class Reconciler(ItemNamer namer, TimeZoneInfo? zone = null)
         if (input.Updates.LastOrDefault(u => u.At > evidence) is { Build: > 0 } update)
             (state, reason) = (PlacementState.Stale, $"Game updated to build {update.Build} since");
 
-        return new ReconciledHolding(h, state, reason);
+        return new ReconciledHolding(h, state, reason, sighting?.At);
     }
 
     private UnknownArrival Arrival(ReconcileInput input, Sighting s)

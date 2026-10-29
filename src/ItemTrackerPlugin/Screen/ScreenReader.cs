@@ -28,7 +28,7 @@ public sealed class ScreenReader(Func<ItemClassResolver?> classes, Func<TickData
 
         if (header.Context != ScreenContext.Personal && Tooltip(tick, ScreenRois.TooltipRight) is { } right)
         {
-            var page = PageOf(tick);
+            var page = ReadPage(tick);
             var capacity = tick.TryGetOcr(ScreenRois.Capacity, out var cap)
                 ? CapacityParser.Parse(string.Join(' ', cap.Lines.Select(l => l.Text)))
                 : null;
@@ -46,7 +46,8 @@ public sealed class ScreenReader(Func<ItemClassResolver?> classes, Func<TickData
         PageCounter? page, CapacityReading? capacity, string source) =>
         new(panel, ship, tooltip, classes()?.Resolve(tooltip), quantity, tile, page, capacity, source);
 
-    private static PageCounter? PageOf(TickData tick)
+    /// <summary>The page counter, read at whichever scale parses.</summary>
+    public static PageCounter? ReadPage(TickData tick)
     {
         foreach (var scale in ScreenRois.PageScales)
         {

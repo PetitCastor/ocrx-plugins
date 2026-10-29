@@ -60,6 +60,45 @@ public sealed class ReconcilerTests
     }
 
     [Fact]
+    public void A_look_dates_the_kind_even_when_it_proved_nothing()
+    {
+        var seen = Assert.Single(Run([At(Keeger, Cruz, quantity: 5)], [Kiosk("CRUZ Dark", quantity: 2)]).Holdings);
+        var never = Assert.Single(Run([At(Keeger, Badger)], []).Holdings);
+
+        Assert.Equal(PlacementState.Deduced, seen.State);
+        Assert.Equal(Seen, seen.SeenAt);
+        Assert.Null(never.SeenAt);
+    }
+
+    [Fact]
+    public void Pages_count_the_kinds_they_showed_and_the_ones_verified()
+    {
+        var result = Run(
+            [At(Keeger, Badger), At(Keeger, Cruz, quantity: 5)],
+            [Kiosk("CF-227 Badger Repeater", page: 2), Kiosk("CRUZ Dark", quantity: 2, page: 1)]);
+
+        var one = Assert.Single(result.Pages, p => p.Page == 1);
+        var two = Assert.Single(result.Pages, p => p.Page == 2);
+        Assert.False(one.Verified);
+        Assert.Equal((1, 0), (one.Kinds, one.VerifiedKinds));
+        Assert.True(two.Verified);
+        Assert.All(result.Pages, p => Assert.Equal(Keeger, p.LocationId));
+    }
+
+    [Fact]
+    public void A_station_tally_counts_units_per_state_and_ignores_other_stations()
+    {
+        var result = Run(
+            [At(Keeger, Badger), At(Keeger, Cruz, quantity: 5), At(Elsewhere, Badger)],
+            [Kiosk("CF-227 Badger Repeater"), Kiosk("CRUZ Dark", quantity: 2, page: 2)]);
+
+        var here = result.At(Keeger);
+        Assert.Equal(new StateTally(Verified: 1, Deduced: 5, Stale: 0, Conflict: 0), here);
+        Assert.Equal(6, here.Total);
+        Assert.Equal(new StateTally(0, 1, 0, 0), result.At(Elsewhere));
+    }
+
+    [Fact]
     public void Never_seen_is_deduced_from_the_logs()
     {
         var row = Assert.Single(Run([At(Keeger, Badger)], []).Holdings);

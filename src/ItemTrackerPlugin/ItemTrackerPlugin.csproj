@@ -12,8 +12,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Ocrx.Sdk" Version="2.8.0" />
-    <PackageReference Include="Ocrx.Contracts" Version="2.8.0" />
+    <PackageReference Include="Ocrx.Sdk" Version="2.9.0" />
+    <PackageReference Include="Ocrx.Contracts" Version="2.9.0" />
+    <PackageReference Include="Ocrx.Sdk.Overlay" Version="2.9.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
     <!-- Microsoft.Data.Sqlite 10.0.0 pulls SQLitePCLRaw 2.1.11, which carries
          GHSA-2m69-gcr7-jv3q. Pin the bundle forward past the advisory. -->
@@ -22,6 +23,11 @@
          BackgroundService and the ingest stack logs through ILogger. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.14" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.14" />
+  </ItemGroup>
+
+  <!-- The read-only view: view/index.html beside the executable is what makes the OCRX window show a tab. -->
+  <ItemGroup>
+    <Content Include="view\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

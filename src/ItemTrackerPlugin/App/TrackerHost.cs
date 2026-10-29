@@ -43,8 +43,8 @@ internal sealed class TrackerHost : IAsyncDisposable
         _wiki.DefaultRequestHeaders.UserAgent.ParseAdd(WikiUserAgent);
         var names = new WikiNameService(Db, _wiki);
         var places = new PlaceNameService(Db, Options, _wiki);
-        var state = new TrackerState(Db, names, Options, _loggers.CreateLogger<TrackerState>());
-        Watcher = new LogWatchService(Options, Db, state, names, places, _loggers.CreateLogger<LogWatchService>());
+        State = new TrackerState(Db, names, Options, _loggers.CreateLogger<TrackerState>());
+        Watcher = new LogWatchService(Options, Db, State, names, places, _loggers.CreateLogger<LogWatchService>());
     }
 
     public string DataRoot { get; }
@@ -52,6 +52,7 @@ internal sealed class TrackerHost : IAsyncDisposable
     public TrackerOptions Options { get; }
     public TrackerDb Db { get; }
     public LogWatchService Watcher { get; }
+    public TrackerState State { get; }
 
     /// <summary>
     /// Builds the stack and starts following the logs. A replay gets a throwaway root under the temp

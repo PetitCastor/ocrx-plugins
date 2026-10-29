@@ -7,6 +7,15 @@ namespace ItemTrackerPlugin.Reconcile;
 /// <summary>Reads what <see cref="Reconciler"/> needs from the store, beside a resolver already loaded from it.</summary>
 public static class ReconcileSources
 {
+    /// <summary>The station the log last said the player opened, or null when none yet or the last open named no id.</summary>
+    public static string? LatestOpened(TrackerDb db)
+    {
+        using var cn = db.Open();
+        using var cmd = cn.CreateCommand();
+        cmd.CommandText = "SELECT ref FROM log_signal WHERE kind = 'opened' ORDER BY ts DESC LIMIT 1";
+        return cmd.ExecuteScalar() as string;
+    }
+
     public static ReconcileInput Load(TrackerDb db, HoldingResolver resolver, IReadOnlyList<ItemHolding> holdings)
     {
         using var cn = db.Open();
