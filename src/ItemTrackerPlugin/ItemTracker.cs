@@ -1,14 +1,17 @@
 using System.Globalization;
 using ItemTrackerPlugin.App;
 using ItemTrackerPlugin.Ingest;
+using ItemTrackerPlugin.Naming;
+using ItemTrackerPlugin.Screen;
 using Ocrx.Sdk;
 
 namespace ItemTrackerPlugin;
 
 /// <summary>
-/// The OCRX side of the tracker. It reads nothing off the screen yet: the ledger comes from
-/// Game.log alone, followed by <see cref="LogWatchService"/> on its own loop, and this class only
-/// starts that loop and carries its two settings to and from the engine's Settings panel.
+/// The OCRX side of the tracker. The ledger comes from Game.log, followed by
+/// <see cref="LogWatchService"/> on its own loop; this class starts that loop, carries its two
+/// settings to and from the engine's Settings panel, and turns the inventory screens into
+/// observations (<see cref="ScreenReader"/>). It does not reconcile the two.
 /// </summary>
 public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
 {
@@ -25,17 +28,61 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
 
     public string Name => "ItemTrackerPlugin";
 
-    /// <summary>
-    /// None. The engine treats an empty set as a deliberate heartbeat-only subscription, and the
-    /// ledger needs no frames until screen reads exist.
-    /// </summary>
-    public IReadOnlyList<RoiSubscription> Rois { get; } = [];
+    private readonly ScreenReader _screen;
+    private readonly bool _fixedSet;
+    private IReadOnlyList<RoiSubscription> _rois;
+    private ItemClassResolver? _classes;
 
-    /// <summary>Retries a failed start; see <see cref="StartAndPublishAsync"/>.</summary>
-    public Task OnTickAsync(TickContext ctx, CancellationToken ct) =>
-        _host is null && DateTime.UtcNow >= _nextStartAttempt
-            ? StartAndPublishAsync(ctx.Services, ct)
-            : Task.CompletedTask;
+    public ItemTracker() : this(fixedSet: false)
+    {
+    }
+
+    /// <param name="fixedSet">Subscribe every region from the first tick and never switch. A replay
+    /// feeds frames faster than a changed set can take effect (seven ticks in the 11-frame kiosk
+    /// corpus), so its expectations need the full set from the start. It costs about 150 ms per
+    /// scan against 50 ms for the headers alone, which is why live use switches.</param>
+    internal ItemTracker(bool fixedSet)
+    {
+        _fixedSet = fixedSet;
+        _rois = fixedSet ? ScreenRois.For(ScreenContext.Kiosk) : ScreenRois.Idle;
+        _screen = new ScreenReader(CurrentClasses);
+    }
+
+    /// <summary>
+    /// The current set: the two headers until an inventory screen is up, then what that screen
+    /// needs. The SDK reads it on every connect, so a reconnect resumes with the set in effect.
+    /// </summary>
+    public IReadOnlyList<RoiSubscription> Rois => _rois;
+
+    /// <summary>A region that fails on one tick must not hide the rest; the reader checks each.</summary>
+    public RoiErrorPolicy ErrorPolicy => RoiErrorPolicy.SkipErrored;
+
+    /// <summary>
+    /// Retries a failed start (see <see cref="StartAndPublishAsync"/>), then reads the screen. The
+    /// header decides which regions are subscribed; a changed set applies from the next tick, so the
+    /// tick that first shows a screen reads nothing of it.
+    /// </summary>
+    public async Task OnTickAsync(TickContext ctx, CancellationToken ct)
+    {
+        if (_host is null && DateTime.UtcNow >= _nextStartAttempt)
+            await StartAndPublishAsync(ctx.Services, ct);
+
+        if (ScreenReader.ReadHeader(ctx.Tick) is not { } header) return;
+
+        if (_screen.Read(ctx.Tick, header) is { } observation)
+            ctx.Services.Emit(ScreenRecord.From(observation, ctx.Tick.Timestamp, ctx.Tick.FrameSeq, Name));
+
+        var wanted = ScreenRois.For(header.Context);
+        if (!_fixedSet && !ReferenceEquals(wanted, _rois))
+        {
+            _rois = wanted;
+            await ctx.Services.UpdateRoisAsync(wanted, ct);
+        }
+    }
+
+    /// <summary>The game's item names, loaded once the log folder is known.</summary>
+    private ItemClassResolver? CurrentClasses() =>
+        _classes ??= _host is null ? null : new ItemClassResolver(GameLocalization.Load(_host.Options.LogDir));
 
     /// <summary>
     /// Starts ingestion on the first connect, then publishes the settings. The first connect follows

@@ -1,0 +1,40 @@
+{
+  "frames": [
+    {
+      "file": "frame_20261029_072758_933.png",
+      "observation": {
+        "panel": "Kiosk",
+        "name": "Odyssey 11 Racing Helmet Alpha",
+        "itemType": "Racing Helmet",
+        "row": 1,
+        "column": 0,
+        "page": 1,
+        "pages": 6
+      }
+    },
+    {
+      "file": "frame_20261029_072819_634.png",
+      "observation": {
+        "panel": "Kiosk",
+        "name": "Odyssey 11 Racing Helmet Alpha",
+        "itemType": "Racing Helmet",
+        "row": 1,
+        "column": 0,
+        "page": 1,
+        "pages": 7
+      }
+    },
+    {
+      "file": "frame_20261029_072833_602.png",
+      "observation": {
+        "panel": "Kiosk",
+        "name": "Odyssey 11 Racing Helmet Alpha",
+        "itemType": "Racing Helmet",
+        "row": 1,
+        "column": 0,
+        "page": 1,
+        "pages": 7
+      }
+    }
+  ]
+}

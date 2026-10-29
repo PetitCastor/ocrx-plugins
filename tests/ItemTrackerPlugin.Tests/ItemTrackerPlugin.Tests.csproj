@@ -25,6 +25,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- TickDataBuilder and ReplayHarness; brings Ocrx.Sdk and Ocrx.Contracts transitively. -->
+    <PackageReference Include="Ocrx.Sdk.Testing" Version="2.8.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\ItemTrackerPlugin\ItemTrackerPlugin.csproj" />
   </ItemGroup>
 
