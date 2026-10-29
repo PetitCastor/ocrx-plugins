@@ -7,20 +7,13 @@ using ItemTrackerPlugin.Reconcile;
 using ItemTrackerPlugin.Resolve;
 using ItemTrackerPlugin.ViewData;
 using Ocrx.Sdk;
-using Ocrx.Sdk.Testing;
 
 namespace ItemTrackerPlugin.Tests;
 
-public sealed class ViewDocumentTests : IDisposable
+public sealed class ViewDocumentTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 29, 12, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset Stored = new(2026, 10, 21, 18, 0, 0, TimeSpan.Zero);
-
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), $"itrk-view-{Guid.NewGuid():N}");
-
-    public ViewDocumentTests() => Directory.CreateDirectory(_dir);
-
-    public void Dispose() => Directory.Delete(_dir, recursive: true);
 
     private static ItemHolding Held(InventoryKind kind, string key, string label, string itemClass = "Drink_a", int quantity = 1) =>
         new(null, itemClass, quantity, [new HoldingLink(kind, key, label)], Stored, "Store", 1.0, false, []);
@@ -138,90 +131,21 @@ public sealed class ViewDocumentTests : IDisposable
     }
 
     [Fact]
-    public void A_document_that_fits_is_written_whole_and_replaces_the_last_one()
+    public void The_shipped_view_sits_beside_the_exe_and_loads_nothing_from_outside()
     {
-        var path = Path.Combine(_dir, "view-data.json");
-        var first = Snapshot([(Held(InventoryKind.Location, "123", "Keeger"), PlacementState.Verified)]);
+        var dir = Path.Combine(AppContext.BaseDirectory, "view");
 
-        ViewPublisher.WriteSmallestFit(first, path);
-        ViewPublisher.WriteSmallestFit(TrackerState.Snapshot.Empty, path);
-
-        using var written = JsonDocument.Parse(File.ReadAllText(path));
-        Assert.Equal(ViewDocument.Schema, written.RootElement.GetProperty("schema").GetInt32());
-        Assert.Equal(0, written.RootElement.GetProperty("systems").GetArrayLength());
+        Assert.True(File.Exists(Path.Combine(dir, "index.html")));
+        foreach (var file in Directory.EnumerateFiles(dir))
+            Assert.DoesNotMatch(@"(?i)(https?:)?//[a-z0-9.-]+\.[a-z]{2,}", File.ReadAllText(file));
     }
 
     [Fact]
-    public void A_document_over_the_limit_is_refused_and_the_last_good_one_stays()
-    {
-        var path = Path.Combine(_dir, "view-data.json");
-        ViewPublisher.WriteSmallestFit(Snapshot([(Held(InventoryKind.Location, "123", "Keeger"), PlacementState.Verified)]), path);
-        var before = File.ReadAllText(path);
-
-        var huge = Enumerable.Range(0, 9000)
-            .Select(i => (Held(InventoryKind.Location, "123", "Keeger", $"Item_{i:00000}_with_a_long_class_name_to_fill_the_document"), PlacementState.Deduced))
-            .ToList();
-
-        Assert.Throws<InvalidOperationException>(() => ViewPublisher.WriteSmallestFit(Snapshot(huge), path));
-        Assert.Equal(before, File.ReadAllText(path));
-    }
-
-    [Fact]
-    public void A_document_too_big_with_full_history_is_built_again_with_less()
-    {
-        var asked = new List<int>();
-        var fitted = ViewPublisher.Fit(history =>
-        {
-            asked.Add(history);
-            return new JsonObject { ["history"] = history, ["pad"] = new string('x', 130_000 * history + 100_000) };
-        });
-
-        Assert.Equal([ViewDocument.FullHistory, 3], asked);
-        Assert.Equal(3, fitted!["history"]!.GetValue<int>());
-    }
-
-    [Fact]
-    public void The_size_is_counted_the_way_the_sdk_writes_it_indented()
-    {
-        // About 0.9 MB compact, well over 1 MiB once indented: many small objects, which indentation inflates most.
-        JsonObject Build(int history) => new()
-        {
-            ["rows"] = new JsonArray(Enumerable.Range(0, 12_000 * (history + 1) / 9)
-                .Select(i => (JsonNode)new JsonObject { ["a"] = i, ["b"] = "xxxxxxxxxxxxxxxxxxxx", ["c"] = new JsonArray(1, 2, 3) }).ToArray()),
-        };
-
-        var compact = Build(ViewDocument.FullHistory).ToJsonString().Length;
-        var fitted = ViewPublisher.Fit(Build);
-
-        Assert.True(compact < PluginView.MaxDataBytes, "the fixture must be under the limit compact");
-        Assert.NotNull(fitted);
-        PluginView.WriteData(Path.Combine(_dir, "indented.json"), fitted);
-    }
-
-    [Fact]
-    public void A_document_that_does_not_fit_even_without_history_has_no_fit()
-    {
-        var asked = new List<int>();
-
-        Assert.Null(ViewPublisher.Fit(history =>
-        {
-            asked.Add(history);
-            return new JsonObject { ["pad"] = new string('x', PluginView.MaxDataBytes) };
-        }));
-        Assert.Equal([ViewDocument.FullHistory, 3, 0], asked);
-    }
-
-    [Fact]
-    public void The_shipped_view_declares_itself_and_loads_nothing_from_outside()
-    {
-        PluginViewAssert.IsDeclaredAndSelfContained(AppContext.BaseDirectory);
-    }
-
-    [Fact]
-    public void The_page_needs_no_inline_script_the_engines_policy_would_block()
+    public void The_page_needs_no_inline_script_its_policy_would_block()
     {
         var html = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "view", "index.html"));
 
+        Assert.Contains("default-src 'self'", html, StringComparison.Ordinal);
         Assert.DoesNotContain("onclick=", html, StringComparison.OrdinalIgnoreCase);
         Assert.Matches("<script type=\"module\" src=\"main.js\"></script>", html);
         Assert.DoesNotMatch(@"<script(?![^>]*\bsrc=)", html);

@@ -29,8 +29,10 @@ dotnet sln OcrxPlugins.slnx add src/MyPlugin/MyPlugin.csproj
 dotnet sln OcrxPlugins.slnx add tests/MyPlugin.Tests/MyPlugin.Tests.csproj
 ```
 
-Target plain `net10.0` and reference the released SDK packages. Keep all
-`Ocrx.*` packages on the same version train:
+Target plain `net10.0` and reference the released SDK packages. A plugin that
+shows a window of its own needs `net10.0-windows` with WinForms or WPF, as
+Item Tracker does: the engine renders nothing for a plugin beyond its settings.
+Keep all `Ocrx.*` packages on the same version train:
 
 ```xml
 <!-- src/MyPlugin/MyPlugin.csproj -->

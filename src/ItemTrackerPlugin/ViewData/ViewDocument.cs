@@ -17,7 +17,7 @@ public static class ViewDocument
 {
     public const int Schema = 1;
 
-    /// <summary>Moves kept per item at the fullest; <see cref="ViewPublisher"/> lowers it when the document is too large.</summary>
+    /// <summary>Moves kept per item. The document goes to the window in-process, so nothing caps its size.</summary>
     public const int FullHistory = 8;
 
     public static JsonObject Build(TrackerState.Snapshot snapshot, int historyPerItem = FullHistory)

@@ -1,10 +1,10 @@
-// Entry of the Item Tracker view. The OCRX window posts the plugin's data document into this frame,
-// once on load and again on every change; nothing is ever sent back.
+// Entry of the Item Tracker view. The plugin's own window (a WebView2) posts its data document to this
+// page, once it has loaded and again on every change; nothing is ever sent back.
 
 import { renderView } from "./render.js";
 
 // The window wraps the document as { type: "ocrx:view-data", data }. A bare document is taken as it
-// comes, which is what the SDK's guide shows and what a plain test harness posts.
+// comes, which is what a plain test harness posts.
 const VIEW_DATA_MESSAGE = "ocrx:view-data";
 
 export function createView(root, doc) {
@@ -46,9 +46,7 @@ export function createView(root, doc) {
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {
   const view = createView(document.getElementById("app"), document);
-  window.addEventListener("message", (event) => {
-    if (event.source !== window.parent) return;
-    view.receive(event.data);
-  });
+  // Only the host can post here: chrome.webview carries the plugin's messages and nothing else.
+  window.chrome?.webview?.addEventListener("message", (event) => view.receive(event.data));
   view.draw();
 }
