@@ -1,0 +1,13 @@
+{
+  "tag": "v0.1.0-itemtracker-alpha.2",
+  "channel": "preview",
+  "plugins": [
+    "ItemTrackerPlugin"
+  ],
+  "notes": "Item Tracker alpha preview, second build. Unsigned, opt-in, and may change incompatibly between previews. Works with OCRX engine v2.1.1 or later; the engine no longer shows plugin pages, so Item Tracker opens its own window. Needs the Microsoft Edge WebView2 Runtime, which Windows 10 and 11 include. Built on Ocrx.Sdk 2.9.0.",
+  "changes": [
+    "Changed: Item Tracker shows your items in its own window instead of a page in the OCRX window.",
+    "Added: An Item Tracker icon in the notification area opens the window. Closing the window hides it, and the tracker keeps running.",
+    "Added: An \"Open window at startup\" setting, on by default, decides whether the window opens when OCRX starts the plugin."
+  ]
+}
