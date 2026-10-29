@@ -133,7 +133,8 @@ internal sealed class TrackerWindow : IDisposable
         }
         catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
         {
-            // The thread is ending: a window going away has nothing left to show.
+            // The thread ended between the check and the call; a window going away has nothing left to show.
+            _log($"ItemTrackerPlugin: the window is closed, a call to it was dropped: {ex.Message}");
         }
     }
 
