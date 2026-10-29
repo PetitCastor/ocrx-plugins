@@ -46,9 +46,13 @@ public sealed class ItemTrackerSettingsTests
         Assert.True(SettingsSpecFile.TryRead(Path.Combine(AppContext.BaseDirectory, SettingsSpecFile.FileName), out var shipped));
         var live = ItemTracker.BuildSpec(new TrackerOptions { LogDir = "x" });
 
+        // Options is a list, which record equality compares by reference: compared item by item instead.
         Assert.Equal(
-            live.Fields.Select(f => f with { Value = "" }),
-            shipped.Fields.Select(f => f with { Value = "" }));
+            live.Fields.Select(f => f with { Value = "", Options = null }),
+            shipped.Fields.Select(f => f with { Value = "", Options = null }));
+        Assert.Equal(
+            live.Fields.Select(f => f.Options ?? []),
+            shipped.Fields.Select(f => f.Options ?? []));
     }
 
     private static SettingsField Field(SettingsSpec spec, string id) => spec.Fields.Single(f => f.Id == id);

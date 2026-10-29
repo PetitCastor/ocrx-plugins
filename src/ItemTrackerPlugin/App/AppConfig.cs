@@ -33,6 +33,12 @@ public sealed class AppConfig
     /// </summary>
     public bool? OpenAtStartup { get; set; }
 
+    /// <summary>
+    /// The window's colours as the setting's value ("system", "light" or "dark"). Null — never set —
+    /// follows Windows, and is not written.
+    /// </summary>
+    public string? Theme { get; set; }
+
     /// <summary>Same directory as the database: both are this install's private state.</summary>
     public static string DefaultPath => Path.Combine(
         Path.GetDirectoryName(TrackerDb.DefaultPath) ?? Path.Combine(
