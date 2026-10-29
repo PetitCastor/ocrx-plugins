@@ -64,7 +64,7 @@ internal sealed class ViewForm : Form
     public void SetTheme(WindowTheme theme)
     {
         _theme = theme;
-        ApplyTheme();
+        if (!IsDisposed) ApplyTheme();
     }
 
     private void ApplyTheme()
@@ -74,7 +74,23 @@ internal sealed class ViewForm : Form
         ForeColor = dark ? Color.FromArgb(0xe2, 0xe8, 0xf0) : Color.FromArgb(0x0f, 0x17, 0x2a);
         _web.DefaultBackgroundColor = BackColor;
         if (IsHandleCreated) TitleBar.Apply(Handle, dark);
-        if (_web.CoreWebView2 is { } core) core.Profile.PreferredColorScheme = ColorScheme(_theme);
+        if (_web.CoreWebView2 is { } core) SetColorScheme(core);
+    }
+
+    /// <summary>
+    /// Only colours: a runtime too old for the profile API, or a page process gone, leaves the page in
+    /// its default scheme and must never stop it from loading.
+    /// </summary>
+    private void SetColorScheme(CoreWebView2 core)
+    {
+        try
+        {
+            core.Profile.PreferredColorScheme = ColorScheme(_theme);
+        }
+        catch (Exception ex) when (ex is NotSupportedException or NotImplementedException or COMException or InvalidOperationException)
+        {
+            _log($"ItemTrackerPlugin: the window's page did not take the theme: {ex.Message}");
+        }
     }
 
     private static CoreWebView2PreferredColorScheme ColorScheme(WindowTheme theme) => theme switch
@@ -86,11 +102,20 @@ internal sealed class ViewForm : Form
 
     /// <summary>
     /// Windows switching its app mode. The page follows on its own; the title bar and the background
-    /// behind the page are the form's to repaint. Raised on this thread, which subscribed.
+    /// behind the page are the form's to repaint. SystemEvents raises it on the subscribing thread when
+    /// that thread pumps messages, as this one does; the marshal covers the case where it does not.
     /// </summary>
     private void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e)
     {
-        if (_theme == WindowTheme.System && e.Category == UserPreferenceCategory.General && !IsDisposed) ApplyTheme();
+        if (_theme != WindowTheme.System || e.Category != UserPreferenceCategory.General || IsDisposed) return;
+
+        if (!InvokeRequired)
+            ApplyTheme();
+        else if (IsHandleCreated)
+            BeginInvoke(() =>
+            {
+                if (!IsDisposed) ApplyTheme();
+            });
     }
 
     protected override void OnHandleCreated(EventArgs e)
@@ -197,7 +222,7 @@ internal sealed class ViewForm : Form
         core.Settings.AreHostObjectsAllowed = false;
         core.Settings.IsStatusBarEnabled = false;
         core.Settings.IsZoomControlEnabled = true;
-        core.Profile.PreferredColorScheme = ColorScheme(_theme);
+        SetColorScheme(core);
         core.SetVirtualHostNameToFolderMapping(Host, _viewDir, CoreWebView2HostResourceAccessKind.Deny);
         core.NavigationStarting += (_, e) =>
         {

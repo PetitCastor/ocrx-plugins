@@ -29,9 +29,14 @@ public sealed class WindowThemeTests : IDisposable
     public void A_settings_file_from_before_the_theme_follows_windows()
     {
         var path = Path.Combine(_dir, "settings.json");
-        File.WriteAllText(path, """{ "LogDir": "E:\Games\StarCitizen\LIVE", "OpenAtStartup": false }""");
+        File.WriteAllText(path, """{ "LogDir": "E:/Games/StarCitizen/LIVE", "OpenAtStartup": false }""");
 
-        Assert.Equal(WindowTheme.System, TrackerOptions.Load(path).Theme);
+        var options = TrackerOptions.Load(path);
+
+        // The file was read, not set aside as unreadable and replaced by defaults.
+        Assert.Equal("E:/Games/StarCitizen/LIVE", options.LogDir);
+        Assert.False(options.OpenAtStartup);
+        Assert.Equal(WindowTheme.System, options.Theme);
     }
 
     [Fact]
@@ -40,7 +45,10 @@ public sealed class WindowThemeTests : IDisposable
         var path = Path.Combine(_dir, "settings.json");
         File.WriteAllText(path, """{ "LogDir": "x", "Theme": "purple" }""");
 
-        Assert.Equal(WindowTheme.System, TrackerOptions.Load(path).Theme);
+        var options = TrackerOptions.Load(path);
+
+        Assert.Equal("x", options.LogDir);
+        Assert.Equal(WindowTheme.System, options.Theme);
     }
 
     [Fact]

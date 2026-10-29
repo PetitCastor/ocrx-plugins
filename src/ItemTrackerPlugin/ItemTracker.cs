@@ -324,9 +324,8 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
     /// Applies an edit to the log folder or the wipe date through the tracker's own "Save and
     /// rebuild" path, which persists, wipes and re-reads the logs. "Open window at startup" is only
     /// saved: it decides the next start and neither opens nor closes the window now. "Window theme" is
-    /// saved and recolours the window at once. An edit the
-    /// tracker cannot use is logged and dropped; the republished spec then shows the values still in
-    /// effect.
+    /// saved and recolours the window at once. An edit the tracker cannot use is logged and dropped;
+    /// the republished spec then shows the values still in effect.
     /// </summary>
     public async Task OnApplySettings(ApplySettings apply, IPluginServices services, CancellationToken ct)
     {
