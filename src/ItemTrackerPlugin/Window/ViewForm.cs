@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -54,16 +55,34 @@ internal sealed class ViewForm : Form
         if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
         Activate();
 
-        if (_started) return;
-        _started = true;
-        _ = StartPageAsync();
+        if (!_started)
+        {
+            _started = true;
+            _ = StartPageAsync();
+        }
+        else if (!_pageReady && _web.CoreWebView2 is { } core)
+        {
+            // The last load failed or the page's process died: reopening the window tries again.
+            core.Reload();
+        }
     }
 
     /// <summary>Keeps the latest message and sends it now if the page is up, or once it is.</summary>
     public void Post(string message)
     {
         _latest = message;
-        if (_pageReady) _web.CoreWebView2.PostWebMessageAsJson(message);
+        if (!_pageReady) return;
+
+        try
+        {
+            _web.CoreWebView2.PostWebMessageAsJson(message);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or COMException)
+        {
+            // The page's process went away; the message is kept for the reload on the next open.
+            _pageReady = false;
+            _log($"ItemTrackerPlugin: the window's page did not take an update: {ex.Message}");
+        }
     }
 
     /// <summary>Closes for real, for the end of the run.</summary>
@@ -106,7 +125,19 @@ internal sealed class ViewForm : Form
             return;
         }
 
-        var core = _web.CoreWebView2;
+        try
+        {
+            Navigate(_web.CoreWebView2);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log($"ItemTrackerPlugin: the window could not load its page: {ex.Message}");
+            ShowPlainMessage($"Item Tracker could not show its window: {ex.Message}");
+        }
+    }
+
+    private void Navigate(CoreWebView2 core)
+    {
         core.Settings.AreDevToolsEnabled = false;
         core.Settings.AreDefaultContextMenusEnabled = false;
         core.Settings.AreHostObjectsAllowed = false;
@@ -118,6 +149,11 @@ internal sealed class ViewForm : Form
             if (!e.Uri.StartsWith(Origin, StringComparison.OrdinalIgnoreCase)) e.Cancel = true;
         };
         core.NewWindowRequested += (_, e) => e.Handled = true;
+        core.ProcessFailed += (_, e) =>
+        {
+            _pageReady = false;
+            _log($"ItemTrackerPlugin: the window's page process failed ({e.ProcessFailedKind}); reopening the window reloads it.");
+        };
         core.NavigationCompleted += (_, e) =>
         {
             _pageReady = e.IsSuccess;

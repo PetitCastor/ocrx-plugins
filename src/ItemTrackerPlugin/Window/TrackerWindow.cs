@@ -66,6 +66,12 @@ internal sealed class TrackerWindow : IDisposable
         NotifyIcon tray;
         try
         {
+            // A fault on this thread is logged, never the WinForms dialog: nobody watches a plugin's
+            // background window, and a modal box would freeze the tray icon until dismissed.
+            // Thread scope: the application-wide form throws once any window exists, and the SDK
+            // overlay may already have made one.
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException, threadScope: true);
+            Application.ThreadException += (_, e) => _log($"ItemTrackerPlugin: the window failed: {e.Exception.Message}");
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);

@@ -334,7 +334,17 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
         if (openEdit is not null)
         {
             if (WindowStartup.TryParseToggle(openEdit.Value, out var open))
-                options.SaveOpenAtStartup(open, _host.SettingsPath);
+            {
+                try
+                {
+                    options.SaveOpenAtStartup(open, _host.SettingsPath);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // The log edits of the same apply still go through; the republished spec shows the value kept.
+                    services.Log($"ItemTrackerPlugin: could not save open at startup: {ex.Message}");
+                }
+            }
             else
                 services.Log($"ItemTrackerPlugin: ignoring open at startup '{openEdit.Value}'; expected true or false.");
         }
