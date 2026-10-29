@@ -19,6 +19,8 @@ public sealed partial class GameLocalization
 
     public int Count => _text.Count;
 
+    public IEnumerable<KeyValuePair<string, string>> Entries => _text;
+
     /// <summary>The text under <paramref name="key"/>, or null when there is none.</summary>
     public string? Get(string key) =>
         _text.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value.Trim() : null;

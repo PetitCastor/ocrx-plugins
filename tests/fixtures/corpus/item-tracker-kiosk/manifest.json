@@ -1,0 +1,90 @@
+{
+  "frames": [
+    {
+      "file": "frame_20261028_152728_946.png",
+      "observation": null
+    },
+    {
+      "file": "frame_20261028_152744_438.png",
+      "observation": {
+        "panel": "Kiosk",
+        "name": "Arclight \"Glimmer\" Pistol",
+        "itemType": "Pistol",
+        "row": 1,
+        "column": 0,
+        "page": 1,
+        "pages": 5
+      }
+    },
+    {
+      "file": "frame_20261028_152755_630.png",
+      "observation": {
+        "panel": "Kiosk",
+        "name": "Aztalan Arms",
+        "itemType": "Light Armor",
+        "row": 3,
+        "column": 2,
+        "page": 1,
+        "pages": 6
+      }
+    },
+    {
+      "file": "frame_20261028_152807_868.png",
+      "observation": {
+        "panel": "Kiosk",
+        "name": "CF-227 Badger Repeater",
+        "itemType": "Laser Repeater",
+        "row": 3,
+        "column": 1,
+        "page": 1,
+        "pages": 4
+      }
+    },
+    {
+      "file": "frame_20261028_152823_613.png",
+      "observation": {
+        "panel": "Kiosk",
+        "name": "M4A Cannon Defense Division",
+        "itemType": "Laser Cannon",
+        "row": 3,
+        "column": 0,
+        "page": 1,
+        "pages": 4
+      }
+    },
+    {
+      "file": "frame_20261028_152849_133.png",
+      "observation": null
+    },
+    {
+      "file": "frame_20261028_152942_156.png",
+      "observation": null
+    },
+    {
+      "file": "frame_20261028_153011_221.png",
+      "observation": null
+    },
+    {
+      "file": "frame_20261028_153034_702.png",
+      "observation": {
+        "panel": "Personal",
+        "name": "Aztalan Legs",
+        "itemType": "Light Armor"
+      }
+    },
+    {
+      "file": "frame_20261028_153509_342.png",
+      "observation": {
+        "panel": "Kiosk",
+        "name": "CRUZ Dark",
+        "quantity": 2,
+        "row": 0,
+        "column": 0
+      }
+    },
+    {
+      "file": "frame_20261028_153522_673.png",
+      "observation": null
+    }
+  ]
+}

@@ -5,3 +5,6 @@ tests/ItemTrackerPlugin.Tests/Reliability/Corpus/** -text
 # ItemTrackerPlugin playtest fixtures: kept byte-exact too, so a checkout never rewrites the lines
 # the tests read.
 tests/ItemTrackerPlugin.Tests/Fixtures/** -text
+
+# Item Tracker kiosk corpus: byte-exact log, binary frames.
+tests/fixtures/corpus/item-tracker-kiosk/Game_20261028.log -text
