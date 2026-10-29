@@ -1,1 +1,11 @@
-[]
+[
+  {
+    "id": "item-tracker",
+    "name": "Item Tracker",
+    "clientName": "ItemTrackerPlugin",
+    "description": "Tracks where your Star Citizen items are, from Game.log and the inventory screens.",
+    "downloadUrl": "https://github.com/PetitCastor/ocrx-plugins/releases/download/v0.1.0-itemtracker-alpha.1/ItemTrackerPlugin-win-x64.zip",
+    "game": "star-citizen",
+    "channel": "preview"
+  }
+]
