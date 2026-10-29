@@ -26,6 +26,7 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
     internal const string LogDirSettingId = "logDir";
     internal const string WipeDateSettingId = "wipeDate";
     internal const string OpenAtStartupSettingId = "openAtStartup";
+    internal const string ThemeSettingId = "theme";
 
     private const string WipeDateFormat = "yyyy-MM-dd";
 
@@ -308,6 +309,7 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
 
         var window = _startWindow(host.DataRoot);
         _window = window;
+        window.SetTheme(host.Options.Theme);
         _feed = new ViewFeed(host.State, window.Post, services.Log);
         if (start == WindowStart.Open) window.Show();
     }
@@ -321,9 +323,9 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
     /// <summary>
     /// Applies an edit to the log folder or the wipe date through the tracker's own "Save and
     /// rebuild" path, which persists, wipes and re-reads the logs. "Open window at startup" is only
-    /// saved: it decides the next start and neither opens nor closes the window now. An edit the
-    /// tracker cannot use is logged and dropped; the republished spec then shows the values still in
-    /// effect.
+    /// saved: it decides the next start and neither opens nor closes the window now. "Window theme" is
+    /// saved and recolours the window at once. An edit the tracker cannot use is logged and dropped;
+    /// the republished spec then shows the values still in effect.
     /// </summary>
     public async Task OnApplySettings(ApplySettings apply, IPluginServices services, CancellationToken ct)
     {
@@ -349,11 +351,33 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
                 services.Log($"ItemTrackerPlugin: ignoring open at startup '{openEdit.Value}'; expected true or false.");
         }
 
+        var themeEdit = apply.Values.FirstOrDefault(v => v.Id == ThemeSettingId);
+        if (themeEdit is not null)
+        {
+            if (WindowThemes.TryParse(themeEdit.Value, out var theme))
+            {
+                try
+                {
+                    options.SaveTheme(theme, _host.SettingsPath);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Not saved, but the window still takes it for this run.
+                    options.Theme = theme;
+                    services.Log($"ItemTrackerPlugin: could not save the window theme: {ex.Message}");
+                }
+
+                _window?.SetTheme(theme);
+            }
+            else
+                services.Log($"ItemTrackerPlugin: ignoring window theme '{themeEdit.Value}'; expected system, light or dark.");
+        }
+
         var logDirEdit = apply.Values.FirstOrDefault(v => v.Id == LogDirSettingId);
         var wipeDateEdit = apply.Values.FirstOrDefault(v => v.Id == WipeDateSettingId);
         if (logDirEdit is null && wipeDateEdit is null)
         {
-            if (openEdit is not null) await services.PublishSettingsAsync(BuildSpec(options), ct);
+            if (openEdit is not null || themeEdit is not null) await services.PublishSettingsAsync(BuildSpec(options), ct);
             return;
         }
 
@@ -422,6 +446,14 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
                 Type: SettingsFieldType.Toggle,
                 Value: WindowStartup.FormatToggle(options.OpenAtStartup),
                 Help: "Shows the Item Tracker window when OCRX starts the plugin. Its icon in the notification area opens it at any time. Takes effect at the next start.",
+                Group: "Window"),
+            new SettingsField(
+                Id: ThemeSettingId,
+                Label: "Window theme",
+                Type: SettingsFieldType.Select,
+                Value: WindowThemes.Format(options.Theme),
+                Help: "Light or dark colours for the Item Tracker window. Follow Windows matches the app mode chosen in Windows settings and changes with it. Takes effect at once.",
+                Options: WindowThemes.Options,
                 Group: "Window"),
         ]);
 

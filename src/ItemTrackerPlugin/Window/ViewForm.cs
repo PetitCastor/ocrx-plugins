@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
+using Microsoft.Win32;
 
 namespace ItemTrackerPlugin.Window;
 
@@ -11,6 +12,11 @@ namespace ItemTrackerPlugin.Window;
 /// <see cref="Post"/>. The page is served from a virtual host mapped to the folder beside the exe,
 /// because ES modules do not load from <c>file://</c>; anything that would leave that host is refused.
 /// Closing it by hand hides it (<see cref="HiddenByUser"/>); only <see cref="CloseForGood"/> ends it.
+/// <para>
+/// The page picks its colours from <c>prefers-color-scheme</c>, which WebView2 answers from the
+/// <see cref="WindowTheme"/> (Auto follows Windows by itself); the form paints the background behind
+/// the page while it loads and the title bar in the same colours.
+/// </para>
 /// </summary>
 internal sealed class ViewForm : Form
 {
@@ -30,8 +36,13 @@ internal sealed class ViewForm : Form
     private bool _pageReady;
     private bool _closing;
     private string? _latest;
+    private WindowTheme _theme;
 
-    public ViewForm(string viewDir, string userDataDir, Icon icon, Action<string> log)
+    /// <summary>The page's own background colours (<c>--bg</c> in view.css), so loading shows no flash.</summary>
+    private static readonly Color LightBack = Color.FromArgb(0xf8, 0xfa, 0xfc);
+    private static readonly Color DarkBack = Color.FromArgb(0x0f, 0x17, 0x2a);
+
+    public ViewForm(string viewDir, string userDataDir, Icon icon, WindowTheme theme, Action<string> log)
     {
         _viewDir = viewDir;
         _userDataDir = userDataDir;
@@ -43,6 +54,74 @@ internal sealed class ViewForm : Form
         ClientSize = new Size(1100, 720);
         MinimumSize = new Size(640, 400);
         Controls.Add(_web);
+
+        _theme = theme;
+        ApplyTheme();
+        SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+    }
+
+    /// <summary>Recolours the window and its page now; no reload.</summary>
+    public void SetTheme(WindowTheme theme)
+    {
+        _theme = theme;
+        if (!IsDisposed) ApplyTheme();
+    }
+
+    private void ApplyTheme()
+    {
+        var dark = WindowThemes.IsDark(_theme);
+        BackColor = dark ? DarkBack : LightBack;
+        ForeColor = dark ? Color.FromArgb(0xe2, 0xe8, 0xf0) : Color.FromArgb(0x0f, 0x17, 0x2a);
+        _web.DefaultBackgroundColor = BackColor;
+        if (IsHandleCreated) TitleBar.Apply(Handle, dark);
+        if (_web.CoreWebView2 is { } core) SetColorScheme(core);
+    }
+
+    /// <summary>
+    /// Only colours: a runtime too old for the profile API, or a page process gone, leaves the page in
+    /// its default scheme and must never stop it from loading.
+    /// </summary>
+    private void SetColorScheme(CoreWebView2 core)
+    {
+        try
+        {
+            core.Profile.PreferredColorScheme = ColorScheme(_theme);
+        }
+        catch (Exception ex) when (ex is NotSupportedException or NotImplementedException or COMException or InvalidOperationException)
+        {
+            _log($"ItemTrackerPlugin: the window's page did not take the theme: {ex.Message}");
+        }
+    }
+
+    private static CoreWebView2PreferredColorScheme ColorScheme(WindowTheme theme) => theme switch
+    {
+        WindowTheme.Light => CoreWebView2PreferredColorScheme.Light,
+        WindowTheme.Dark => CoreWebView2PreferredColorScheme.Dark,
+        _ => CoreWebView2PreferredColorScheme.Auto,
+    };
+
+    /// <summary>
+    /// Windows switching its app mode. The page follows on its own; the title bar and the background
+    /// behind the page are the form's to repaint. SystemEvents raises it on the subscribing thread when
+    /// that thread pumps messages, as this one does; the marshal covers the case where it does not.
+    /// </summary>
+    private void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e)
+    {
+        if (_theme != WindowTheme.System || e.Category != UserPreferenceCategory.General || IsDisposed) return;
+
+        if (!InvokeRequired)
+            ApplyTheme();
+        else if (IsHandleCreated)
+            BeginInvoke(() =>
+            {
+                if (!IsDisposed) ApplyTheme();
+            });
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        TitleBar.Apply(Handle, WindowThemes.IsDark(_theme));
     }
 
     /// <summary>Raised when the user closed the window, which only hid it.</summary>
@@ -143,6 +222,7 @@ internal sealed class ViewForm : Form
         core.Settings.AreHostObjectsAllowed = false;
         core.Settings.IsStatusBarEnabled = false;
         core.Settings.IsZoomControlEnabled = true;
+        SetColorScheme(core);
         core.SetVirtualHostNameToFolderMapping(Host, _viewDir, CoreWebView2HostResourceAccessKind.Deny);
         core.NavigationStarting += (_, e) =>
         {
@@ -182,7 +262,12 @@ internal sealed class ViewForm : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) _web.Dispose();
+        if (disposing)
+        {
+            // A static event: left subscribed, it would keep the form alive for the rest of the run.
+            SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+            _web.Dispose();
+        }
         base.Dispose(disposing);
     }
 }

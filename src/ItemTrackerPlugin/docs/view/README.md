@@ -39,7 +39,10 @@ running. Click its icon in the notification area to open it again." A replay has
 
 The setting "Open window at startup" (`openAtStartup`, a Toggle in the Window group, on by default)
 decides whether the window shows on the first connect of a run. Applying it only saves it for the next
-start. Without the WebView2 Runtime the window shows a plain sentence saying so instead of the page.
+start. "Window theme" (`theme`, a Select in the Window group: Follow Windows, Light, Dark; Follow Windows
+by default) recolours the window at once: WebView2's preferred colour scheme answers the page's
+`prefers-color-scheme`, and the form paints the title bar and the background behind the page to match.
+Without the WebView2 Runtime the window shows a plain sentence saying so instead of the page.
 
 The page is served from `https://item-tracker.example/` (a virtual host mapped to `view/`, because ES
 modules do not load from `file://`); navigation anywhere else and new windows are refused, and the

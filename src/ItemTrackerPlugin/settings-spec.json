@@ -23,6 +23,19 @@
       "value": "true",
       "help": "Shows the Item Tracker window when OCRX starts the plugin. Its icon in the notification area opens it at any time. Takes effect at the next start.",
       "group": "Window"
+    },
+    {
+      "id": "theme",
+      "label": "Window theme",
+      "type": 0,
+      "value": "system",
+      "options": [
+        { "value": "system", "label": "Follow Windows" },
+        { "value": "light", "label": "Light" },
+        { "value": "dark", "label": "Dark" }
+      ],
+      "help": "Light or dark colours for the Item Tracker window. Follow Windows matches the app mode chosen in Windows settings and changes with it. Takes effect at once.",
+      "group": "Window"
     }
   ]
 }

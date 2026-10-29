@@ -1,5 +1,6 @@
 using ItemTrackerPlugin.Data;
 using ItemTrackerPlugin.Ingest;
+using ItemTrackerPlugin.Window;
 
 namespace ItemTrackerPlugin.App;
 
@@ -20,6 +21,9 @@ public sealed class TrackerOptions
 
     /// <summary>Whether the window shows when the plugin starts; see <see cref="AppConfig.OpenAtStartup"/>.</summary>
     public bool OpenAtStartup { get; set; } = true;
+
+    /// <summary>The window's colours; see <see cref="AppConfig.Theme"/>. An unknown stored value follows Windows.</summary>
+    internal WindowTheme Theme { get; set; } = WindowTheme.System;
 
     /// <summary>The wipe date; see <see cref="AppConfig.InceptionDate"/>. Null reads the whole history.</summary>
     public DateTimeOffset? InceptionDate
@@ -77,6 +81,7 @@ public sealed class TrackerOptions
             LogDir = config.LogDir ?? LogFileLocator.DefaultLogDir,
             InceptionDate = config.InceptionDate,
             OpenAtStartup = config.OpenAtStartup ?? true,
+            Theme = WindowThemes.TryParse(config.Theme, out var theme) ? theme : WindowTheme.System,
         };
     }
 
@@ -90,6 +95,18 @@ public sealed class TrackerOptions
         config.OpenAtStartup = open;
         config.Save(configPath);
         OpenAtStartup = open;
+    }
+
+    /// <summary>
+    /// Persists the window theme to settings.json and takes it here. Nothing is rebuilt; the window
+    /// recolours itself.
+    /// </summary>
+    internal void SaveTheme(WindowTheme theme, string? configPath = null)
+    {
+        var config = AppConfig.Load(configPath);
+        config.Theme = WindowThemes.Format(theme);
+        config.Save(configPath);
+        Theme = theme;
     }
 
     /// <summary>
