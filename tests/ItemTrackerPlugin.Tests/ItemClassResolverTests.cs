@@ -13,6 +13,7 @@ public sealed class ItemClassResolverTests
         "item_NameKLWE_LaserRepeater_S2=CF-227 Badger Repeater",
         "item_NameTWIN_A=Twin",
         "item_NameTWIN_B=Twin",
+        "item_Name_thp_light_arms_01_01_01=Aztalan Arms",
         "Frontend_Unrelated=Nope",
     ]));
 
@@ -37,6 +38,10 @@ public sealed class ItemClassResolverTests
         Assert.Null(Resolver.Resolve(Tooltip("Twin")));
         Assert.Null(Resolver.Resolve(Tooltip("CF-227 Badger Repeater")));
     }
+
+    [Fact]
+    public void An_underscore_after_the_key_prefix_is_not_part_of_the_class() =>
+        Assert.Equal("thp_light_arms_01_01_01", Resolver.Resolve(Tooltip("Aztalan Arms")));
 
     [Fact]
     public void Unknown_name_resolves_to_nothing() => Assert.Null(Resolver.Resolve(Tooltip("Not in the game")));

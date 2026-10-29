@@ -1,6 +1,7 @@
 using System.Globalization;
 using ItemTrackerPlugin.Data;
 using ItemTrackerPlugin.Naming;
+using ItemTrackerPlugin.Reconcile;
 using ItemTrackerPlugin.Resolve;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
@@ -42,10 +43,14 @@ public sealed class TrackerState(
         IReadOnlyList<NamedHolding> Holdings,
         HoldingResolver? Resolver,
         DateTimeOffset BuiltAt,
-        IngestHealth Health)
+        IngestHealth Health,
+        Reconciliation? Reconciliation = null)
     {
         public static readonly Snapshot Empty = new([], null, DateTimeOffset.MinValue, IngestHealth.Empty);
     }
+
+    /// <summary>The game text the reconciliation names ledger classes by, read once per log folder.</summary>
+    private (string LogDir, GameLocalization Text)? _text;
 
     public Snapshot Current
     {
@@ -75,11 +80,13 @@ public sealed class TrackerState(
                 afterMovesRead: null,
                 readAdditionalSnapshot: cn => health = LoadHealthSnapshot(cn, logDir, inceptionDate));
             afterResolverLoaded?.Invoke();
-            var holdings = resolver.ResolveAll()
+            var resolved = resolver.ResolveAll();
+            var holdings = resolved
                 .Select(h => new NamedHolding(h, names.Resolve(h.ItemClass)))
                 .ToList();
 
-            var snapshot = new Snapshot(holdings, resolver, DateTimeOffset.UtcNow, health!);
+            var reconciliation = Reconcile(logDir, resolver, resolved);
+            var snapshot = new Snapshot(holdings, resolver, DateTimeOffset.UtcNow, health!, reconciliation);
             beforePublish?.Invoke();
 
             lock (_gate)
@@ -103,6 +110,34 @@ public sealed class TrackerState(
                 log?.LogWarning(ex, "A snapshot subscriber failed");
             }
         }
+    }
+
+    /// <summary>
+    /// The states, or none when they cannot be worked out: the ledger worked before the screen was
+    /// read and must still publish when reconciling fails.
+    /// </summary>
+    private Reconciliation Reconcile(string logDir, HoldingResolver resolver, IReadOnlyList<ItemHolding> holdings)
+    {
+        try
+        {
+            return new Reconciler(Namer(logDir)).Run(ReconcileSources.Load(db, resolver, holdings));
+        }
+        catch (Exception ex) when (ex is SqliteException or IOException or FormatException or UnauthorizedAccessException)
+        {
+            log?.LogWarning(ex, "Reconciling with the screen failed; publishing the ledger alone");
+            return Reconciliation.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Names a class by the game's own text, else by the wiki when it knows the class. A folder with no
+    /// <c>global.ini</c> is read again next time: the game may write one.
+    /// </summary>
+    private ItemNamer Namer(string logDir)
+    {
+        if (_text is not { } cached || cached.LogDir != logDir || cached.Text.Count == 0)
+            _text = cached = (logDir, GameLocalization.Load(logDir));
+        return new ItemNamer(cached.Text, c => names.Resolve(c) is { Match: not NameMatch.None } n ? n.Display : null);
     }
 
     private static IngestHealth LoadHealthSnapshot(

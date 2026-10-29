@@ -176,6 +176,26 @@ public sealed class LogGapIngestTests : IDisposable
     }
 
     [Fact]
+    public void An_open_after_a_move_inside_the_station_names_the_station_not_the_sub_location()
+    {
+        // The 2026-10-28 log at 19:25:12: the player stepped into a sub-location of Keeger and opened the kiosk.
+        Ingest(
+            $"<{Next()}> [Notice] <Update Inventory Location> Player [Pilot] is changing location. " +
+            $"Landing [0] -> [{Station}]. Location [0] -> [{Station}]. [Team_CoreGameplayFeatures][Inventory]",
+            $"<{Next()}> [Notice] <RequestLocationInventory> Player[Pilot] requested inventory for " +
+            "Location[AsteroidClusterBase_Nyx_Social_Keeger_001] [Team_CoreGameplayFeatures][Inventory]");
+        _second += 60;
+
+        Ingest(
+            $"<{Next()}> [Notice] <Update Inventory Location> Player [Pilot] is changing location. " +
+            $"Landing [0] -> [{Station}]. Location [0] -> [2204875565]. [Team_CoreGameplayFeatures][Inventory]",
+            $"<{Next()}> [Notice] <RequestLocationInventory> Player[Pilot] requested inventory for " +
+            "Location[AsteroidClusterBase_Nyx_Social_Keeger_001] [Team_CoreGameplayFeatures][Inventory]");
+
+        Assert.Equal("2", Scalar($"SELECT COUNT(*) FROM log_signal WHERE kind = 'opened' AND ref = '{Station}'"));
+    }
+
+    [Fact]
     public void A_kiosk_buy_with_an_unreadable_price_keeps_the_rest()
     {
         Ingest(

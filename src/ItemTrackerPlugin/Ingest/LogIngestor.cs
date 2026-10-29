@@ -564,13 +564,17 @@ public sealed class LogIngestor(TrackerDb db, string logDir, DateTimeOffset? fro
             case LocationNamed named:
             {
                 // The station inventory opens whether or not an id is waiting for its name.
-                // ref is the location id, the same key "closed" uses: the id waiting for this
-                // name when there is one, else whatever id the name is already bound to, else
-                // null. detail is the name.
+                // ref is the location id, the same key "closed" uses: of the ids waiting for this
+                // name, the one it is already bound to, else the first; with none waiting, whatever
+                // id the name is bound to; else null. detail is the name. A change of location
+                // inside a station waits two ids, the sub-location first ("Location [0] ->
+                // [2204875565]" while "Landing [3058615591]"), and the kiosk's inventory is the
+                // station's, which the name was bound to when the player arrived.
+                var bound = LocationIdOf(cn, tx, named.Name);
                 var openedId = state.PendingLocationIds.Count > 0 &&
                                named.Timestamp - state.PendingSince <= LocationPairingWindow
-                    ? state.PendingLocationIds[0]
-                    : LocationIdOf(cn, tx, named.Name);
+                    ? state.PendingLocationIds.Contains(bound ?? "") ? bound : state.PendingLocationIds[0]
+                    : bound;
                 if (RecordSignal(cn, tx, sessionId, lineOffset, "opened", named.Timestamp, openedId, named.Name))
                     stats.SignalsRecorded++;
 

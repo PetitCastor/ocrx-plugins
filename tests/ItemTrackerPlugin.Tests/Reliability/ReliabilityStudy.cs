@@ -3,6 +3,8 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using ItemTrackerPlugin.Data;
 using ItemTrackerPlugin.Ingest;
+using ItemTrackerPlugin.Naming;
+using ItemTrackerPlugin.Reconcile;
 using ItemTrackerPlugin.Resolve;
 using Microsoft.Data.Sqlite;
 
@@ -74,6 +76,7 @@ public static class ReliabilityStudy
         var holdings = resolver.ResolveAll();
         MeasureHoldings(holdings, report);
         MeasureFreight(db, holdings, report);
+        MeasureStates(db, resolver, holdings, report);
 
         MeasureLiveParity(db, files, workDir, options, report);
 
@@ -372,6 +375,18 @@ public static class ReliabilityStudy
         var supportByBuild = trainByBuild.ToDictionary(kv => kv.Key, kv => kv.Value.Count);
         return new PlacementCalibration(calibration, evaluation, factors, evaluationBrier, weakBuilds, supportByBuild);
     }
+
+    /// <summary>
+    /// How many placements end in each state. A log corpus has no screen observations, so this splits
+    /// deduced from stale; verified and conflict count only where a store holds observations.
+    /// </summary>
+    internal static void MeasureStates(TrackerDb db, HoldingResolver resolver, IReadOnlyList<ItemHolding> holdings, ReliabilityReport report)
+    {
+        var result = new Reconciler(new ItemNamer(GameLocalization.Empty)).Run(ReconcileSources.Load(db, resolver, holdings));
+        foreach (var state in Enum.GetValues<PlacementState>())
+            report.Counts[$"state.{state.ToString().ToLowerInvariant()}"] = result.Count(state);
+    }
+
 
     /// <summary>
     /// The freight total the game reported for each station, set beside the number of items the
