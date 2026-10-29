@@ -6,7 +6,7 @@ using ItemTrackerPlugin.Ingest;
 namespace ItemTrackerPlugin.App;
 
 /// <summary>
-/// The tracker's two settings, edited through the engine's Settings panel (see
+/// The tracker's settings, edited through the engine's Settings panel (see
 /// <see cref="ItemTracker"/>) and kept in settings.json.
 /// <para>
 /// Not config.json: that name is the SDK's per-plugin <c>PluginConfig</c> file (ConfigSeed),
@@ -26,6 +26,12 @@ public sealed class AppConfig
     /// its original name so the standalone tracker's config.json still loads on import.
     /// </summary>
     public DateTimeOffset? InceptionDate { get; set; }
+
+    /// <summary>
+    /// Whether the plugin's window shows when it starts. Null — never set — means yes, and is not
+    /// written, so a file from before the setting existed reads as the default.
+    /// </summary>
+    public bool? OpenAtStartup { get; set; }
 
     /// <summary>Same directory as the database: both are this install's private state.</summary>
     public static string DefaultPath => Path.Combine(

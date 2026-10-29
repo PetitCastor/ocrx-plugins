@@ -18,6 +18,9 @@ public sealed class TrackerOptions
     }
     public string DatabasePath { get; set; } = TrackerDb.DefaultPath;
 
+    /// <summary>Whether the window shows when the plugin starts; see <see cref="AppConfig.OpenAtStartup"/>.</summary>
+    public bool OpenAtStartup { get; set; } = true;
+
     /// <summary>The wipe date; see <see cref="AppConfig.InceptionDate"/>. Null reads the whole history.</summary>
     public DateTimeOffset? InceptionDate
     {
@@ -73,7 +76,20 @@ public sealed class TrackerOptions
         {
             LogDir = config.LogDir ?? LogFileLocator.DefaultLogDir,
             InceptionDate = config.InceptionDate,
+            OpenAtStartup = config.OpenAtStartup ?? true,
         };
+    }
+
+    /// <summary>
+    /// Persists "open window at startup" to settings.json and takes it here. It only decides the next
+    /// start, so nothing is restarted or rebuilt.
+    /// </summary>
+    public void SaveOpenAtStartup(bool open, string? configPath = null)
+    {
+        var config = AppConfig.Load(configPath);
+        config.OpenAtStartup = open;
+        config.Save(configPath);
+        OpenAtStartup = open;
     }
 
     /// <summary>

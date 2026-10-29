@@ -1,10 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Plain net10.0 like every plugin here: the tracker reads Game.log and a SQLite store, never the
-       capture stack, so the Windows TFM the engine needs must not appear. -->
+  <!-- net10.0-windows with WinForms: the plugin hosts its own window (a WebView2 showing view/) and
+       its own tray icon, because the engine renders nothing for a plugin beyond its settings. The
+       tracker itself still reads only Game.log and a SQLite store; no capture code is involved. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>Window\ItemTracker.ico</ApplicationIcon>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>ItemTrackerPlugin</RootNamespace>
@@ -16,6 +19,7 @@
     <PackageReference Include="Ocrx.Contracts" Version="2.9.0" />
     <PackageReference Include="Ocrx.Sdk.Overlay" Version="2.9.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
     <!-- Microsoft.Data.Sqlite 10.0.0 pulls SQLitePCLRaw 2.1.11, which carries
          GHSA-2m69-gcr7-jv3q. Pin the bundle forward past the advisory. -->
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
@@ -25,9 +29,21 @@
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.14" />
   </ItemGroup>
 
-  <!-- The read-only view: view/index.html beside the executable is what makes the OCRX window show a tab. -->
+  <!-- WinForms adds global usings for System.Windows.Forms and System.Drawing; their Screen, Timer and
+       friends would clash with the tracker's own names. The window files import them themselves. -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <!-- The read-only page the plugin's window shows, loaded from beside the executable. -->
   <ItemGroup>
     <Content Include="view\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Ships beside the exe: the WebView2 licence asks binary redistributions to carry its notice. -->
+  <ItemGroup>
+    <None Update="THIRD_PARTY.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -36,6 +52,18 @@
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
   </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Window\ItemTracker.ico" LogicalName="ItemTrackerPlugin.Window.ItemTracker.ico" />
+  </ItemGroup>
+
+  <!-- The WebView2 package references its WPF control on every .NET 5+ target. This is a WinForms
+       app, and that reference pulls a second WindowsBase in (MSB3277, an error here). -->
+  <Target Name="DropWebView2Wpf" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <InternalsVisibleTo Include="ItemTrackerPlugin.Tests" />

@@ -5,7 +5,7 @@ using ItemTrackerPlugin.Naming;
 using ItemTrackerPlugin.Overlay;
 using ItemTrackerPlugin.Reconcile;
 using ItemTrackerPlugin.Screen;
-using ItemTrackerPlugin.ViewData;
+using ItemTrackerPlugin.Window;
 using Microsoft.Data.Sqlite;
 using Ocrx.Sdk;
 
@@ -18,13 +18,14 @@ namespace ItemTrackerPlugin;
 /// observations (<see cref="ScreenReader"/>), which it stores for the reconciliation the ledger
 /// snapshot runs (<see cref="Reconciler"/>). What the user sees comes from two places: the in-game
 /// status line while an inventory screen is open (<see cref="InventoryStatus"/>, drawn by the SDK
-/// overlay), and the read-only tab of the OCRX window (<see cref="ViewPublisher"/>).
+/// overlay), and the plugin's own read-only window with its tray icon (<see cref="TrackerWindow"/>).
 /// </summary>
 public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
 {
     /// <summary>Opaque to the engine, which forwards each back untouched on a user edit.</summary>
     internal const string LogDirSettingId = "logDir";
     internal const string WipeDateSettingId = "wipeDate";
+    internal const string OpenAtStartupSettingId = "openAtStartup";
 
     private const string WipeDateFormat = "yyyy-MM-dd";
 
@@ -44,7 +45,10 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
     private string? _lastShown;
     private int? _lastQuantity;
     private readonly InventoryStatus _status = new();
-    private ViewPublisher? _view;
+    private readonly Func<string, TrackerWindow>? _startWindow;
+    private TrackerWindow? _window;
+    private ViewFeed? _feed;
+    private bool _windowDecided;
     private (DateTimeOffset Built, string? Id, StationStatus? Value)? _stationCache;
     private string? _openedId;
     private DateTime _openedCheckedAt;
@@ -59,7 +63,7 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
     /// dropped, so one misread header does not cost two subscription round trips.</summary>
     private const int LeaveAfterTicks = 3;
 
-    public ItemTracker() : this(fixedSet: false)
+    public ItemTracker() : this(fixedSet: false, startWindow: StartWindow)
     {
     }
 
@@ -68,10 +72,13 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
     /// corpus), so its expectations need the full set from the start. It costs about 150 ms per
     /// scan against 50 ms for the headers alone, which is why live use switches.</param>
     /// <param name="startHost">False keeps the ledger from starting, for tests of the screen side.</param>
-    internal ItemTracker(bool fixedSet, bool startHost = true)
+    /// <param name="startWindow">Builds the window and tray icon from the tracker's data root; null,
+    /// as in every test, runs without them.</param>
+    internal ItemTracker(bool fixedSet, bool startHost = true, Func<string, TrackerWindow>? startWindow = null)
     {
         _fixedSet = fixedSet;
         _startHost = startHost;
+        _startWindow = startWindow;
         _rois = fixedSet ? ScreenRois.For(ScreenContext.Kiosk) : ScreenRois.Idle;
         _screen = new ScreenReader(CurrentClasses);
     }
@@ -283,32 +290,74 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
             }
         }
 
-        // The view's file is the real ledger's, so a replay leaves it alone, like the store itself.
-        if (_view is null && !services.Engine.ReplayMode)
-        {
-            _view = new ViewPublisher(_host.State, ViewPublisher.DefaultPath, services.Log);
-            // The first rebuild writes the first real document; an empty one now would blank the last good view.
-            if (_host.State.Current.BuiltAt != DateTimeOffset.MinValue) _view.Publish();
-        }
-
+        StartWindowOnce(_host, services);
         await services.PublishSettingsAsync(BuildSpec(_host.Options), ct);
     }
 
     /// <summary>
+    /// The window and its tray icon, once per run, after the first successful start: a reconnect
+    /// reuses them, and a replay never has them.
+    /// </summary>
+    private void StartWindowOnce(TrackerHost host, IPluginServices services)
+    {
+        if (_windowDecided) return;
+        _windowDecided = true;
+
+        var start = WindowStartup.Decide(services.Engine.ReplayMode, host.Options.OpenAtStartup);
+        if (start == WindowStart.None || _startWindow is null) return;
+
+        var window = _startWindow(host.DataRoot);
+        _window = window;
+        _feed = new ViewFeed(host.State, window.Post, services.Log);
+        if (start == WindowStart.Open) window.Show();
+    }
+
+    /// <summary>The page ships beside the exe; WebView2 keeps its profile in the tracker's data root.</summary>
+    private static TrackerWindow StartWindow(string dataRoot) => TrackerWindow.Start(
+        Path.Combine(AppContext.BaseDirectory, "view"),
+        Path.Combine(dataRoot, "WebView2"),
+        Console.Error.WriteLine);
+
+    /// <summary>
     /// Applies an edit to the log folder or the wipe date through the tracker's own "Save and
-    /// rebuild" path, which persists, wipes and re-reads the logs. An edit the tracker cannot use is
-    /// logged and dropped; the republished spec then shows the values still in effect.
+    /// rebuild" path, which persists, wipes and re-reads the logs. "Open window at startup" is only
+    /// saved: it decides the next start and neither opens nor closes the window now. An edit the
+    /// tracker cannot use is logged and dropped; the republished spec then shows the values still in
+    /// effect.
     /// </summary>
     public async Task OnApplySettings(ApplySettings apply, IPluginServices services, CancellationToken ct)
     {
         if (_host is null) return;
 
+        var options = _host.Options;
+        var openEdit = apply.Values.FirstOrDefault(v => v.Id == OpenAtStartupSettingId);
+        if (openEdit is not null)
+        {
+            if (WindowStartup.TryParseToggle(openEdit.Value, out var open))
+            {
+                try
+                {
+                    options.SaveOpenAtStartup(open, _host.SettingsPath);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // The log edits of the same apply still go through; the republished spec shows the value kept.
+                    services.Log($"ItemTrackerPlugin: could not save open at startup: {ex.Message}");
+                }
+            }
+            else
+                services.Log($"ItemTrackerPlugin: ignoring open at startup '{openEdit.Value}'; expected true or false.");
+        }
+
         var logDirEdit = apply.Values.FirstOrDefault(v => v.Id == LogDirSettingId);
         var wipeDateEdit = apply.Values.FirstOrDefault(v => v.Id == WipeDateSettingId);
-        if (logDirEdit is null && wipeDateEdit is null) return;
+        if (logDirEdit is null && wipeDateEdit is null)
+        {
+            if (openEdit is not null) await services.PublishSettingsAsync(BuildSpec(options), ct);
+            return;
+        }
 
         _classes = null;
-        var options = _host.Options;
         var logDir = logDirEdit is null ? options.LogDir
             : string.IsNullOrWhiteSpace(logDirEdit.Value) ? LogFileLocator.DefaultLogDir
             : logDirEdit.Value.Trim();
@@ -367,11 +416,19 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
                 Value: options.InceptionDate?.ToString(WipeDateFormat, CultureInfo.InvariantCulture) ?? "",
                 Help: "yyyy-MM-dd. Everything logged before it is ignored. Blank reads the whole history. Changing it rebuilds the ledger from the logs.",
                 Group: "Logs"),
+            new SettingsField(
+                Id: OpenAtStartupSettingId,
+                Label: "Open window at startup",
+                Type: SettingsFieldType.Toggle,
+                Value: WindowStartup.FormatToggle(options.OpenAtStartup),
+                Help: "Shows the Item Tracker window when OCRX starts the plugin. Its icon in the notification area opens it at any time. Takes effect at the next start.",
+                Group: "Window"),
         ]);
 
     public async ValueTask DisposeAsync()
     {
-        _view?.Dispose();
+        _feed?.Dispose();
+        _window?.Dispose();
         if (_host is not null) await _host.DisposeAsync();
     }
 }

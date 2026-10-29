@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- The page only ever loads its own files: the window maps them to one origin and refuses the rest. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Item Tracker</title>
   <link rel="stylesheet" href="view.css">
 </head>

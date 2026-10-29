@@ -1,9 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Plain net10.0, like the plugin under test. The fixtures and the reliability corpus are read
-       from the source tree (CallerFilePath), not copied beside the assembly. -->
+  <!-- net10.0-windows, like the plugin under test, which hosts its own WinForms window. The tests
+       stay off the UI: they cover the window's rules, not the window. The fixtures and the
+       reliability corpus are read from the source tree (CallerFilePath), not copied beside the assembly. -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -28,6 +29,14 @@
     <!-- TickDataBuilder and ReplayHarness; brings Ocrx.Sdk and Ocrx.Contracts transitively. -->
     <PackageReference Include="Ocrx.Sdk.Testing" Version="2.9.0" />
   </ItemGroup>
+
+  <!-- The plugin's WebView2 package reaches here through buildTransitive, WPF reference included;
+       dropped for the same reason as in ItemTrackerPlugin.csproj (MSB3277). -->
+  <Target Name="DropWebView2Wpf" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ItemTrackerPlugin\ItemTrackerPlugin.csproj" />

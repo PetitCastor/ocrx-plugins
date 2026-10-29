@@ -15,6 +15,14 @@
       "value": "",
       "help": "yyyy-MM-dd. Everything logged before it is ignored. Blank reads the whole history. Changing it rebuilds the ledger from the logs.",
       "group": "Logs"
+    },
+    {
+      "id": "openAtStartup",
+      "label": "Open window at startup",
+      "type": 1,
+      "value": "true",
+      "help": "Shows the Item Tracker window when OCRX starts the plugin. Its icon in the notification area opens it at any time. Takes effect at the next start.",
+      "group": "Window"
     }
   ]
 }
