@@ -2,8 +2,11 @@ using System.Globalization;
 using ItemTrackerPlugin.App;
 using ItemTrackerPlugin.Ingest;
 using ItemTrackerPlugin.Naming;
+using ItemTrackerPlugin.Overlay;
 using ItemTrackerPlugin.Reconcile;
 using ItemTrackerPlugin.Screen;
+using ItemTrackerPlugin.ViewData;
+using Microsoft.Data.Sqlite;
 using Ocrx.Sdk;
 
 namespace ItemTrackerPlugin;
@@ -13,7 +16,9 @@ namespace ItemTrackerPlugin;
 /// <see cref="LogWatchService"/> on its own loop; this class starts that loop, carries its two
 /// settings to and from the engine's Settings panel, and turns the inventory screens into
 /// observations (<see cref="ScreenReader"/>), which it stores for the reconciliation the ledger
-/// snapshot runs (<see cref="Reconciler"/>).
+/// snapshot runs (<see cref="Reconciler"/>). What the user sees comes from two places: the in-game
+/// status line while an inventory screen is open (<see cref="InventoryStatus"/>, drawn by the SDK
+/// overlay), and the read-only tab of the OCRX window (<see cref="ViewPublisher"/>).
 /// </summary>
 public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
 {
@@ -38,6 +43,9 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
     private int _leaveTicks;
     private string? _lastShown;
     private int? _lastQuantity;
+    private readonly InventoryStatus _status = new();
+    private ViewPublisher? _view;
+    private (DateTimeOffset Built, StationStatus? Value)? _stationCache;
 
     /// <summary>Ticks in a row that must want the headers alone before an inventory screen's set is
     /// dropped, so one misread header does not cost two subscription round trips.</summary>
@@ -66,6 +74,9 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
     /// </summary>
     public IReadOnlyList<RoiSubscription> Rois => _rois;
 
+    /// <summary>Replaces the lookup of the open station, for tests of the status line.</summary>
+    internal Func<StationStatus?>? StationSource { get; set; }
+
     /// <summary>A region that fails on one tick must not hide the rest; the reader checks each.</summary>
     public RoiErrorPolicy ErrorPolicy => RoiErrorPolicy.SkipErrored;
 
@@ -82,6 +93,7 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
         if (ScreenReader.ReadHeader(ctx.Tick) is not { } header) return;
 
         Observe(ctx, _screen.Read(ctx.Tick, header));
+        ShowStatus(ctx, header);
 
         var wanted = ScreenRois.For(header.Context);
         if (_fixedSet || ReferenceEquals(wanted, _rois))
@@ -106,6 +118,56 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
             _rois = previous;
             ctx.Services.Log($"ItemTrackerPlugin: could not switch regions, retrying: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// The status line on the overlay while a kiosk or a ship locker is up, cleared when it is not. Only
+    /// a change is emitted: the overlay shows each record as it arrives and keeps it until the next.
+    /// </summary>
+    private void ShowStatus(TickContext ctx, ScreenHeader header)
+    {
+        var page = header.Context is ScreenContext.Kiosk or ScreenContext.ShipStorage ? ScreenReader.ReadPage(ctx.Tick) : null;
+        if (!_status.Next(header, page, ctx.Tick.Timestamp, () => CurrentStation(ctx.Services), out var line)) return;
+
+        if (line is null)
+            ctx.Services.EmitCleared(ctx.Tick.Timestamp, Name);
+        else
+            ctx.Services.Emit(StatusRecord.Show(line, ctx.Tick.Timestamp, Name));
+    }
+
+    /// <summary>
+    /// The station the log last said was opened, with its states from the latest snapshot. Looked up
+    /// again only when the snapshot is rebuilt: a tick comes many times a second, and the open-line
+    /// lookup is a store read.
+    /// </summary>
+    private StationStatus? CurrentStation(IPluginServices services)
+    {
+        if (StationSource is { } injected) return injected();
+        if (_host is null) return null;
+
+        var snapshot = _host.State.Current;
+        if (_stationCache is { } cached && cached.Built == snapshot.BuiltAt) return cached.Value;
+
+        StationStatus? status = null;
+        try
+        {
+            if (ReconcileSources.LatestOpened(_host.Db) is { } id)
+            {
+                var reconciliation = snapshot.Reconciliation ?? Reconciliation.Empty;
+                status = new StationStatus(
+                    id,
+                    snapshot.Resolver?.Places.ByLocationId(id)?.Name ?? snapshot.Resolver?.PlaceLabel(id) ?? id,
+                    reconciliation.At(id),
+                    reconciliation.Pages.Where(p => p.LocationId == id).ToList());
+            }
+        }
+        catch (SqliteException ex)
+        {
+            services.Log($"ItemTrackerPlugin: could not find the open station: {ex.Message}");
+        }
+
+        _stationCache = (snapshot.BuiltAt, status);
+        return status;
     }
 
     /// <summary>
@@ -180,6 +242,13 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
                 services.Log($"ItemTrackerPlugin: the tracker did not start, retrying in {StartRetryGap.TotalSeconds:0} s: {ex.Message}");
                 return;
             }
+        }
+
+        // The view's file is the real ledger's, so a replay leaves it alone, like the store itself.
+        if (_view is null && !services.Engine.ReplayMode)
+        {
+            _view = new ViewPublisher(_host.State, ViewPublisher.DefaultPath);
+            _view.Publish();
         }
 
         await services.PublishSettingsAsync(BuildSpec(_host.Options), ct);
@@ -262,6 +331,7 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _view?.Dispose();
         if (_host is not null) await _host.DisposeAsync();
     }
 }

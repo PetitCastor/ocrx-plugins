@@ -1,4 +1,5 @@
 using System.Globalization;
+using ItemTrackerPlugin.Overlay;
 using Ocrx.Sdk;
 using Ocrx.Sdk.Testing;
 
@@ -20,7 +21,8 @@ public sealed class ReplayParityTests
         var corpus = ScreenCorpus.Load("item-tracker-kiosk");
         AssertCorpusIsLabelledAndOrdered(corpus);
 
-        var records = await Replay(corpus);
+        var all = await ReplayAll(corpus);
+        var records = Observations(all);
 
         foreach (var frame in corpus.Frames)
         {
@@ -34,6 +36,25 @@ public sealed class ReplayParityTests
             var record = Assert.Single(seen);
             AssertMatches(frame, record);
         }
+
+        AssertOverlayFollowsTheKiosk(all, corpus);
+    }
+
+    /// <summary>
+    /// What the overlay was told while the corpus replayed: only status lines, each naming the kiosk or the ship locker, the page the frames showed in the line,
+    /// and each a change from the line before.
+    /// </summary>
+    private static void AssertOverlayFollowsTheKiosk(List<CaptureRecord> all, ScreenCorpus corpus)
+    {
+        var lines = all.Where(StatusRecord.IsStatus).Select(r => r.Fields![StatusRecord.StatusField]).ToList();
+
+        Assert.NotEmpty(lines);
+        // With the dev machine's own logs the throwaway store may know the station; with none the line is just "Kiosk".
+        Assert.All(lines, line => Assert.True(
+            line.Contains("kiosk", StringComparison.OrdinalIgnoreCase) || line.Contains("locker", StringComparison.OrdinalIgnoreCase), line));
+        for (var i = 1; i < lines.Count; i++) Assert.NotEqual(lines[i - 1], lines[i]);
+        foreach (var page in corpus.Frames.Select(f => f.Observation).Where(o => o?.Page is not null && o.Panel == "Kiosk").Select(o => o!.Page!.Value).Distinct())
+            Assert.Contains(lines, line => line.Contains($"p.{page}/", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -49,7 +70,7 @@ public sealed class ReplayParityTests
         var corpus = ScreenCorpus.Load("item-tracker-fov");
         AssertCorpusIsLabelledAndOrdered(corpus);
 
-        var records = await Replay(corpus);
+        var records = Observations(await ReplayAll(corpus));
 
         Assert.Equal(corpus.Frames.Count, records.Count);
         foreach (var frame in corpus.Frames)
@@ -66,7 +87,11 @@ public sealed class ReplayParityTests
         Assert.Throws<FormatException>(() => ScreenCorpus.TimeOf("Game_20261028.log"));
     }
 
-    private static async Task<List<CaptureRecord>> Replay(ScreenCorpus corpus)
+    /// <summary>The screen reader's records: the status lines for the overlay carry no frame sequence.</summary>
+    private static List<CaptureRecord> Observations(List<CaptureRecord> all) =>
+        all.Where(r => r.Kind == RecordKind.Observation && !StatusRecord.IsStatus(r)).ToList();
+
+    private static async Task<List<CaptureRecord>> ReplayAll(ScreenCorpus corpus)
     {
         await using var plugin = new ItemTracker(fixedSet: true);
         var result = await ReplayHarness.RunAsync(new ReplayOptions
@@ -79,7 +104,7 @@ public sealed class ReplayParityTests
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal(StreamEndReason.ReplayCompleted, result.Reason);
-        return result.Records.Where(r => r.Kind == RecordKind.Observation).ToList();
+        return result.Records.ToList();
     }
 
     private static void AssertMatches(ScreenCorpus.Frame frame, CaptureRecord record)

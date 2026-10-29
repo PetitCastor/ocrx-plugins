@@ -1,0 +1,148 @@
+{
+  "schema": 1,
+  "builtAt": "2026-10-29T12:00:00Z",
+  "counts": { "verified": 4, "deduced": 3, "stale": 1, "conflict": 2 },
+  "ledger": { "moves": 812, "logFiles": 14, "newestLogLine": "2026-10-29T11:58:03Z" },
+  "systems": [
+    {
+      "name": "Nyx",
+      "stations": [
+        {
+          "id": "3058615591",
+          "name": "Keeger — Nyx Social (Nyx)",
+          "resolved": true,
+          "counts": { "verified": 3, "deduced": 1, "stale": 0, "conflict": 1 },
+          "coverage": { "at": "2026-10-28T19:28:07Z", "pagesSeen": 3, "pages": 5, "observedItems": 17, "freightTotal": 40, "complete": false },
+          "items": [
+            {
+              "name": "CF-227 Badger Repeater",
+              "itemClass": "KLWE_LaserRepeater_S2",
+              "quantity": 1,
+              "state": "verified",
+              "reason": "Seen at Keeger kiosk, 28 Oct 15:28, page 2",
+              "seenAt": "2026-10-28T19:28:07Z",
+              "lastMove": "2026-10-21T18:00:00Z",
+              "lastMoveType": "Store",
+              "where": "Keeger",
+              "caveats": [],
+              "history": [
+                { "at": "2026-10-21T18:00:00Z", "type": "Store", "from": "your character", "to": "Keeger — Nyx Social (Nyx)", "amount": 1, "result": "succeed" }
+              ]
+            },
+            {
+              "name": "CRUZ Dark",
+              "itemClass": "Drink_bottle_cruz_01_dark_a",
+              "quantity": 5,
+              "state": "conflict",
+              "reason": "Ledger says 5, kiosk showed 2",
+              "seenAt": "2026-10-28T19:28:07Z",
+              "lastMove": "2026-10-21T18:00:00Z",
+              "lastMoveType": "Store",
+              "where": "Keeger",
+              "caveats": ["the game never confirmed the move that put it here"],
+              "history": []
+            },
+            {
+              "name": "Aztalan Arms",
+              "itemClass": "thp_light_arms_01_01_01",
+              "quantity": 1,
+              "state": "deduced",
+              "reason": "Stored 21 Oct, not seen on screen since",
+              "seenAt": null,
+              "lastMove": "2026-10-21T18:00:00Z",
+              "lastMoveType": "Store",
+              "where": "in a backpack → Keeger",
+              "caveats": [],
+              "history": [
+                { "at": "2026-10-21T18:00:00Z", "type": "Move", "from": "a container", "to": "a container", "amount": 1, "result": null }
+              ]
+            },
+            {
+              "name": "M4A Cannon Defense Division",
+              "itemClass": null,
+              "quantity": 1,
+              "state": "verified",
+              "reason": "Seen at Keeger kiosk, 28 Oct 15:28, page 1, origin unknown",
+              "seenAt": "2026-10-28T19:28:07Z",
+              "lastMove": null,
+              "lastMoveType": "Seen on screen",
+              "where": "no log line places it here",
+              "caveats": [],
+              "history": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Unknown system",
+      "stations": [
+        {
+          "id": "999000111",
+          "name": "location 999000111",
+          "resolved": false,
+          "counts": { "verified": 0, "deduced": 0, "stale": 1, "conflict": 0 },
+          "coverage": null,
+          "items": [
+            {
+              "name": "Paint <b>Star</b> Runner",
+              "itemClass": "Paint_Star_Runner_BIS2951",
+              "quantity": 1,
+              "state": "stale",
+              "reason": "Game updated to build 12881860 since",
+              "seenAt": null,
+              "lastMove": "2026-09-25T10:00:00Z",
+              "lastMoveType": "Store",
+              "where": "location 999000111",
+              "caveats": [],
+              "history": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "ships": [
+    {
+      "class": "GLSN_Shiv",
+      "name": "Grey's Shiv",
+      "retrievedAt": "2026-10-12T14:00:00Z",
+      "retrievedAtPlace": "Area18 — ArcCorp (Stanton)",
+      "items": [
+        {
+          "name": "Medical Pen",
+          "itemClass": "med_pen_01",
+          "quantity": 3,
+          "state": "deduced",
+          "reason": "Stored 12 Oct, not seen on screen since",
+          "seenAt": null,
+          "lastMove": "2026-10-12T14:05:00Z",
+          "lastMoveType": "Store",
+          "where": "Grey's Shiv",
+          "caveats": [],
+          "history": []
+        }
+      ]
+    }
+  ],
+  "dropped": [
+    {
+      "place": "dropped at Area18 — ArcCorp (Stanton)",
+      "items": [
+        {
+          "name": "Gold Bar",
+          "itemClass": "gold_bar_01",
+          "quantity": 1,
+          "state": "deduced",
+          "reason": "Dropped 12 Oct, not seen on screen since",
+          "seenAt": null,
+          "lastMove": "2026-10-12T15:00:00Z",
+          "lastMoveType": "Drop",
+          "where": "dropped at Area18 — ArcCorp (Stanton)",
+          "caveats": [],
+          "history": []
+        }
+      ]
+    }
+  ]
+}
