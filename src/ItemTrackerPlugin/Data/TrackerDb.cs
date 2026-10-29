@@ -77,8 +77,9 @@ public sealed class TrackerDb
     /// <c>first_loc_since</c>; 13 -> 14 adds <c>attachment_sighting</c>; 14 -> 15 adds
     /// <c>wiki_location</c> and <c>place_name</c>; 15 -> 16 adds <c>vehicle</c> and <c>wiki_vehicle</c>.</para>
     /// <para>16 -> 17 adds bounded, watermark-bound ingest correlation snapshots.</para>
+    /// <para>17 -> 18 adds <c>freight_total</c> and <c>log_signal</c>.</para>
     /// </summary>
-    private const int SchemaVersion = 17;
+    private const int SchemaVersion = 18;
 
     public void Initialize()
     {
@@ -158,6 +159,8 @@ public sealed class TrackerDb
         DELETE FROM vehicle;
         DELETE FROM attachment;
         DELETE FROM place_evidence;
+        DELETE FROM freight_total;
+        DELETE FROM log_signal;
         """;
 
     private static void Execute(SqliteConnection cn, string sql, SqliteTransaction? transaction = null)
@@ -401,6 +404,30 @@ public sealed class TrackerDb
         -- never written. Reinstate it alongside the feature, not before.
         DROP TABLE IF EXISTS wiki_item_fts;
 
+        -- The item count of a station's freight list, from the cursor of the last page of a
+        -- full scroll. floor is the highest position any page that had a next page reached, so
+        -- the list holds at least that many; total is only ever set by a last page that beats
+        -- it, because a searched or filtered list ends sooner and says nothing about the station.
+        CREATE TABLE IF NOT EXISTS freight_total (
+            location_id TEXT PRIMARY KEY,
+            floor       INTEGER NOT NULL DEFAULT 0,
+            total       INTEGER,
+            total_ts    TEXT
+        );
+
+        -- Lines that move nothing but say what the player was doing: a stack press, a station
+        -- inventory opened or closed, a kiosk purchase. Keyed by line so a re-read is a no-op.
+        CREATE TABLE IF NOT EXISTS log_signal (
+            session_id  INTEGER NOT NULL,
+            line_offset INTEGER NOT NULL,
+            kind        TEXT NOT NULL,
+            ts          TEXT NOT NULL,
+            ref         TEXT,
+            detail      TEXT,
+            PRIMARY KEY (session_id, line_offset, kind)
+        );
+        CREATE INDEX IF NOT EXISTS ix_log_signal_kind ON log_signal(kind, ts);
+
         CREATE TABLE IF NOT EXISTS meta (
             key   TEXT PRIMARY KEY,
             value TEXT
@@ -423,5 +450,7 @@ public sealed class TrackerDb
         DROP TABLE IF EXISTS vehicle;
         DROP TABLE IF EXISTS attachment;
         DROP TABLE IF EXISTS place_evidence;
+        DROP TABLE IF EXISTS freight_total;
+        DROP TABLE IF EXISTS log_signal;
         """;
 }

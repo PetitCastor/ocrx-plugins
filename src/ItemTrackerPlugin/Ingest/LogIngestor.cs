@@ -21,6 +21,12 @@ public sealed record IngestStats
     public int BatchMovesExpanded { get; set; }
     public int AttachmentsSeen { get; set; }
 
+    /// <summary>Freight list pages read; their totals reach the store through <c>freight_total</c>.</summary>
+    public int FreightPages { get; set; }
+
+    /// <summary>Stack presses, station inventory opens and closes, and kiosk buys: see <c>log_signal</c>.</summary>
+    public int SignalsRecorded { get; set; }
+
     /// <summary>Requests the server never processed before the connection closed.</summary>
     public int RequestsLost { get; set; }
     public int PlaceEvidence { get; set; }
@@ -483,6 +489,38 @@ public sealed class LogIngestor(TrackerDb db, string logDir, DateTimeOffset? fro
                 stats.UnrecognisedMoves++;
                 break;
 
+            case FreightPageSeen page:
+                if (page.EndCursor is { } end &&
+                    ApplyFreightPage(cn, tx, page.Inventory.SubId, page.HasNextPage, end, page.Timestamp))
+                {
+                    stats.FreightPages++;
+                }
+                break;
+
+            // Nothing about an item changed, so these stay out of ChangedHoldings.
+            case StackAllPressed press:
+                if (RecordSignal(cn, tx, sessionId, lineOffset, "stack", press.Timestamp, null, press.Result))
+                    stats.SignalsRecorded++;
+                break;
+
+            case InventoryClosed closed:
+                if (RecordSignal(cn, tx, sessionId, lineOffset, "closed", closed.Timestamp, closed.LocationId, null))
+                    stats.SignalsRecorded++;
+                break;
+
+            case ShopBuyRequested buy:
+                if (RecordSignal(cn, tx, sessionId, lineOffset, "shop_buy", buy.Timestamp, buy.ShopName,
+                        FormattableString.Invariant($"{buy.ItemName} x{buy.Quantity}") +
+                        (buy.Price is { } price ? FormattableString.Invariant($" @ {price:0.##}") : "")))
+                    stats.SignalsRecorded++;
+                break;
+
+            case ShopFlowResolved flow:
+                if (RecordSignal(cn, tx, sessionId, lineOffset, "shop_flow", flow.Timestamp, flow.ShopName,
+                        $"{flow.Type}: {flow.Result} ({flow.KioskState})"))
+                    stats.SignalsRecorded++;
+                break;
+
             // A drag says how big both ends are. For a crate the game never names, that size
             // is the only thing there is to call it by, and hovering over it proves reach.
             case ContainerCapacitySeen cap:
@@ -525,6 +563,17 @@ public sealed class LogIngestor(TrackerDb db, string logDir, DateTimeOffset? fro
             // ...and the name in the next request, usually within a couple of seconds.
             case LocationNamed named:
             {
+                // The station inventory opens whether or not an id is waiting for its name.
+                // ref is the location id, the same key "closed" uses: the id waiting for this
+                // name when there is one, else whatever id the name is already bound to, else
+                // null. detail is the name.
+                var openedId = state.PendingLocationIds.Count > 0 &&
+                               named.Timestamp - state.PendingSince <= LocationPairingWindow
+                    ? state.PendingLocationIds[0]
+                    : LocationIdOf(cn, tx, named.Name);
+                if (RecordSignal(cn, tx, sessionId, lineOffset, "opened", named.Timestamp, openedId, named.Name))
+                    stats.SignalsRecorded++;
+
                 if (state.PendingLocationIds.Count == 0) break;
                 if (named.Timestamp - state.PendingSince > LocationPairingWindow)
                 {
@@ -577,6 +626,90 @@ public sealed class LogIngestor(TrackerDb db, string logDir, DateTimeOffset? fro
         }
 
         TrimCorrelationState(state, ev.Timestamp);
+    }
+
+    /// <summary>
+    /// Folds one page of a freight list into the station's row. A page with a next page only
+    /// raises the floor. A last page sets the total when it reaches past the floor and is no
+    /// lower than any total before it: a list narrowed by search or filter ends sooner, and a
+    /// total that only ever rises is the price of not telling a narrowed list from a short one.
+    /// The floor is permanent for the same reason, and an emptied station (a last page ending at
+    /// 0) is never recorded: both keep their old, higher value until the store is rebuilt.
+    /// </summary>
+    private static bool ApplyFreightPage(
+        SqliteConnection cn, SqliteTransaction tx, string locationId, bool hasNextPage, long end, DateTimeOffset at)
+    {
+        long floor = 0;
+        long? total = null;
+        using (var sel = cn.CreateCommand())
+        {
+            sel.Transaction = tx;
+            sel.CommandText = "SELECT floor, total FROM freight_total WHERE location_id = $l";
+            sel.Parameters.AddWithValue("$l", locationId);
+            using var r = sel.ExecuteReader();
+            if (r.Read())
+            {
+                floor = r.GetInt64(0);
+                total = r.IsDBNull(1) ? null : r.GetInt64(1);
+            }
+        }
+
+        object totalTs = DBNull.Value;
+        if (hasNextPage)
+        {
+            floor = Math.Max(floor, end);
+        }
+        else if (end > floor && (total is null || end >= total))
+        {
+            total = end;
+            totalTs = Iso(at);
+        }
+
+        using var cmd = cn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+            INSERT INTO freight_total(location_id, floor, total, total_ts)
+            VALUES($l, $f, $t, $ts)
+            ON CONFLICT(location_id) DO UPDATE SET
+                floor    = $f,
+                total    = $t,
+                total_ts = COALESCE($ts, total_ts)
+            """;
+        cmd.Parameters.AddWithValue("$l", locationId);
+        cmd.Parameters.AddWithValue("$f", floor);
+        cmd.Parameters.AddWithValue("$t", (object?)total ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$ts", totalTs);
+        cmd.ExecuteNonQuery();
+        return true;
+    }
+
+    /// <summary>The location id a name is already bound to, if any.</summary>
+    private static string? LocationIdOf(SqliteConnection cn, SqliteTransaction tx, string name)
+    {
+        using var cmd = cn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "SELECT location_id FROM location_name WHERE name = $n ORDER BY first_seen LIMIT 1";
+        cmd.Parameters.AddWithValue("$n", name);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    private static bool RecordSignal(
+        SqliteConnection cn, SqliteTransaction tx, long sessionId, long lineOffset, string kind,
+        DateTimeOffset at, string? reference, string? detail)
+    {
+        using var cmd = cn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+            INSERT OR IGNORE INTO log_signal(session_id, line_offset, kind, ts, ref, detail)
+            VALUES($s, $o, $k, $t, $r, $d)
+            """;
+        cmd.Parameters.AddWithValue("$s", sessionId);
+        cmd.Parameters.AddWithValue("$o", lineOffset);
+        cmd.Parameters.AddWithValue("$k", kind);
+        cmd.Parameters.AddWithValue("$t", Iso(at));
+        cmd.Parameters.AddWithValue("$r", (object?)reference ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$d", (object?)detail ?? DBNull.Value);
+        return cmd.ExecuteNonQuery() > 0;
     }
 
     /// <summary>
@@ -903,6 +1036,7 @@ public sealed class LogIngestor(TrackerDb db, string logDir, DateTimeOffset? fro
                 DELETE FROM move WHERE session_id = $s;
                 DELETE FROM attachment_sighting WHERE session_id = $s;
                 DELETE FROM ingest_correlation WHERE session_id = $s;
+                DELETE FROM log_signal WHERE session_id = $s;
                 """;
             del.Parameters.AddWithValue("$s", session.Id);
             del.ExecuteNonQuery();

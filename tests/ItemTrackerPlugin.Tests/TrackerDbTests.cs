@@ -219,7 +219,7 @@ public sealed class TrackerDbTests : IDisposable
         Assert.Equal("0", Scalar("SELECT COUNT(*) FROM ingest_correlation"));
         Assert.Equal("confirmed place", Scalar("SELECT name FROM place_name WHERE place_key = 'place:1'"));
         Assert.Equal("item", Scalar("SELECT display_name FROM wiki_item WHERE class_name = 'item_class'"));
-        Assert.Equal("17", Scalar("SELECT value FROM meta WHERE key = 'schema_version'"));
+        Assert.Equal("18", Scalar("SELECT value FROM meta WHERE key = 'schema_version'"));
     }
 
     private void SeedDerivedData()
@@ -236,6 +236,8 @@ public sealed class TrackerDbTests : IDisposable
             INSERT INTO vehicle(geid) VALUES('vehicle-id');
             INSERT INTO attachment(geid, class_name, last_seen) VALUES('attachment-id', 'item_class', '2026-10-13T00:00:00Z');
             INSERT INTO place_evidence(location_id, kind, value) VALUES('location-id', 'name', 'derived');
+            INSERT INTO freight_total(location_id, floor, total) VALUES('location-id', 250, 540);
+            INSERT INTO log_signal(session_id, line_offset, kind, ts) VALUES(1, 3, 'stack', '2026-10-13T00:00:00Z');
             INSERT INTO place_name(place_key, name, status, decided_by) VALUES('place:1', 'confirmed place', 'confirmed', 'user');
             INSERT INTO wiki_item(class_name, display_name) VALUES('item_class', 'item');
             INSERT INTO wiki_location(uuid, name, system) VALUES('location-id', 'location', 'system');
@@ -247,7 +249,7 @@ public sealed class TrackerDbTests : IDisposable
     private static readonly string[] DerivedTables =
     [
         "attachment_sighting", "ingest_correlation", "move", "session", "location_name", "container_class",
-        "vehicle", "attachment", "place_evidence",
+        "vehicle", "attachment", "place_evidence", "freight_total", "log_signal",
     ];
 
     private string[] SnapshotTables(IEnumerable<string> tables)

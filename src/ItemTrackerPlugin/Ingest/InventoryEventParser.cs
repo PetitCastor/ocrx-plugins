@@ -30,8 +30,9 @@ public static partial class InventoryEventParser
     /// <para>4 -> 5: a closed connection voids the requests the server never processed.</para>
     /// <para>5 -> 6: a drop records the location it fell in.</para>
     /// <para>6 -> 7: ship lockers are named, and ships flown and retrieved are recorded.</para>
+    /// <para>7 -> 8: freight totals, stack presses, inventory open/close and shop buys are recorded.</para>
     /// </summary>
-    public const int Version = 7;
+    public const int Version = 8;
 
     /// <summary>
     /// Move types that never change where an item is held: pure reads, and the
@@ -132,7 +133,7 @@ public static partial class InventoryEventParser
 
     // <Player Inventory Request Complete> Request[N] for 'X' [id] Type[..] Result[Succeed] ...
     [GeneratedRegex(
-        @"^Request\[(?<req>\d+)\] for '[^']*' \[\d+\] Type\[[^\]]*\] Result\[(?<result>[^\]]*)\]",
+        @"^Request\[(?<req>\d+)\] for '[^']*' \[\d+\] Type\[(?<type>[^\]]*)\] Result\[(?<result>[^\]]*)\]",
         RegexOptions.CultureInvariant)]
     private static partial Regex PlayerRequestComplete();
 
@@ -176,13 +177,42 @@ public static partial class InventoryEventParser
     [GeneratedRegex(@"^cause=(?<cause>\d+) reason=""(?<reason>[^""]*)""", RegexOptions.CultureInvariant)]
     private static partial Regex Disconnect();
 
+    // Freight Inventory Grid InventoryDataRequest Successful Inventory[id:Location:n] Elapsed[0.39].
+    //   Page info: HasPreviousPage[0], HasNextPage[1], StartCursor[MA==], EndCursor[MjUw].
+    // The sibling "... Successful for Player[X] Inventory[..] Inventory Result Item Count:[n]" line
+    // is the page size, not the total, and does not match.
+    [GeneratedRegex(
+        @"^Freight Inventory Grid InventoryDataRequest Successful Inventory\[(?<inv>[^\]]*)\] Elapsed\[[^\]]*\]\. " +
+        @"Page info: HasPreviousPage\[[01]\], HasNextPage\[(?<next>[01])\], StartCursor\[[^\]]*\], EndCursor\[(?<end>[^\]]*)\]",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex FreightPage();
+
+    // <Request Terminate Access To Inventory> Player[X] terminating access to [204821708183:Location:3058615591]
+    [GeneratedRegex(@"^Player\[[^\]]*\] terminating access to \[(?<inv>[^\]]*)\]", RegexOptions.CultureInvariant)]
+    private static partial Regex TerminateAccess();
+
+    // Sending SShopBuyRequest - playerId[n] shopId[n] shopName[SCShop_Cargo_Office] kioskId[n] client_price[19175.000000]
+    //   itemClassGUID[guid] itemName[grin_tractor_01] quantity[1]
+    [GeneratedRegex(
+        @"^Sending SShopBuyRequest - .*?shopName\[(?<shop>[^\]]*)\].*?client_price\[(?<price>[^\]]*)\].*?" +
+        @"itemName\[(?<item>[^\]]*)\] quantity\[(?<qty>\d+)\]",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex ShopBuy();
+
+    // Received ShopFlowResponse - playerId[n] shopId[n] shopName[X] kioskId[n] kioskState[BuyRequestProcessing] result[Success] type[Buying]
+    [GeneratedRegex(
+        @"^Received ShopFlowResponse - .*?shopName\[(?<shop>[^\]]*)\].*?kioskState\[(?<state>[^\]]*)\] " +
+        @"result\[(?<result>[^\]]*)\] type\[(?<type>[^\]]*)\]",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex ShopFlow();
+
     public static InventoryEvent? Parse(LogLine line)
     {
         var ev = line.EventName switch
         {
             "InventoryManagementRequest" or "Inventory Mgmt Request Queued" => ParseQueued(line),
             "Add Inventory Management Move" => ParseAddMove(line),
-            "Player Inventory Request Complete" => ParseComplete(line, PlayerRequestComplete()),
+            "Player Inventory Request Complete" => ParsePlayerComplete(line),
             "Inventory Request Completed" => ParseComplete(line, RequestCompleted()),
             "Inventory Token Flow" => ParseTokenFlow(line),
             "OnDragInventoryItemModifyTarget" => ParseDragCapacity(line),
@@ -196,6 +226,10 @@ public static partial class InventoryEventParser
             "Quantum Drive Arrived - Arrived at Final Destination" => new QuantumArrived(line.Timestamp),
             "Channel Disconnected" => ParseDisconnect(line),
             "Vehicle Control Flow" => ParseVehicleFlown(line),
+            "InventoryManagement" => ParseFreightPage(line),
+            "Request Terminate Access To Inventory" => ParseTerminateAccess(line),
+            "CEntityComponentShopUIProvider::SendShopBuyRequest" => ParseShopBuy(line),
+            "CEntityComponentShopUIProvider::RmShopFlowResponse" => ParseShopFlow(line),
             "CEntityComponentShipListProvider::SetVehicleSpawningInformations" => ParseVehicleRetrieved(line),
 
             // An event tag we have never seen dispatch to a move parser at all — most likely
@@ -421,15 +455,70 @@ public static partial class InventoryEventParser
         return system is null ? null : new PlaceAssetSeen(line.Timestamp, system);
     }
 
+    private static InventoryEvent? ParsePlayerComplete(LogLine line)
+    {
+        var m = PlayerRequestComplete().Match(line.Rest);
+        if (!m.Success) return null;
+
+        if (!int.TryParse(m.Groups["req"].Value, out var requestNo)) return null;
+        var result = m.Groups["result"].Value;
+
+        // A stack moves nothing, so its completion has no move to resolve; it is a signal
+        // that the grid may have re-sorted.
+        return m.Groups["type"].Value == "StackAll"
+            ? new StackAllPressed(line.Timestamp, requestNo, result)
+            : new MoveCompleted(line.Timestamp, requestNo, result);
+    }
+
+    private static InventoryEvent? ParseFreightPage(LogLine line)
+    {
+        var m = FreightPage().Match(line.Rest);
+        if (!m.Success) return null;
+
+        var inventory = InventoryRef.Parse(m.Groups["inv"].Value);
+        if (inventory.Kind != InventoryKind.Location) return null;
+
+        return new FreightPageSeen(
+            line.Timestamp, inventory, m.Groups["next"].Value == "1",
+            FreightCursor.TryDecode(m.Groups["end"].Value, out var end) ? end : null);
+    }
+
+    private static InventoryEvent? ParseTerminateAccess(LogLine line)
+    {
+        var m = TerminateAccess().Match(line.Rest);
+        if (!m.Success) return null;
+
+        var inventory = InventoryRef.Parse(m.Groups["inv"].Value);
+        return inventory.Kind == InventoryKind.Location ? new InventoryClosed(line.Timestamp, inventory.SubId) : null;
+    }
+
+    private static InventoryEvent? ParseShopBuy(LogLine line)
+    {
+        var m = ShopBuy().Match(line.Rest);
+        if (!m.Success || !int.TryParse(m.Groups["qty"].Value, out var quantity)) return null;
+
+        return new ShopBuyRequested(
+            line.Timestamp, m.Groups["shop"].Value, m.Groups["item"].Value, quantity,
+            double.TryParse(m.Groups["price"].Value, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var price) ? price : null);
+    }
+
+    private static InventoryEvent? ParseShopFlow(LogLine line)
+    {
+        var m = ShopFlow().Match(line.Rest);
+        return m.Success
+            ? new ShopFlowResolved(
+                line.Timestamp, m.Groups["shop"].Value, m.Groups["state"].Value, m.Groups["result"].Value,
+                m.Groups["type"].Value)
+            : null;
+    }
+
     private static InventoryEvent? ParseComplete(LogLine line, Regex pattern)
     {
         var m = pattern.Match(line.Rest);
-        if (!m.Success) return null;
+        if (!m.Success || !int.TryParse(m.Groups["req"].Value, out var requestNo)) return null;
 
-        return new MoveCompleted(
-            line.Timestamp,
-            int.Parse(m.Groups["req"].Value),
-            m.Groups["result"].Value);
+        return new MoveCompleted(line.Timestamp, requestNo, m.Groups["result"].Value);
     }
 
     private static InventoryEvent? ParseTokenFlow(LogLine line)

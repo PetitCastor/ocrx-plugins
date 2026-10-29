@@ -21,3 +21,4 @@ or complete. See the [replay reliability study](../reliability/README.md) for me
 - [Replay reliability study](../reliability/README.md) — how trustworthy the replay is, measured per pipeline stage, with the improvement plan.
 - [Location ids](sc-location-ids.md) — `<player>:Location:<id>` is player-led; how to name the numeric id from `<RequestLocationInventory>`; not a container.
 - [Wiki name resolution](sc-wiki-naming.md) — api.star-citizen.wiki partial-match gotcha, Found/NotFound/Error caching rule, empty-ItemClass crash, cache file location.
+- [Log lines that are not moves](sc-log-gaps.md) — freight total (cursor + floor rule), stack presses, station inventory open/close, kiosk buys; what is absent.
