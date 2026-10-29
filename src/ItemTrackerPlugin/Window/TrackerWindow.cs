@@ -27,6 +27,7 @@ internal sealed class TrackerWindow : IDisposable
     private NotifyIcon? _tray;
     private Icon? _icon;
     private string? _latest;
+    private WindowTheme _theme;
 
     private TrackerWindow(string viewDir, string userDataDir, Action<string> log)
     {
@@ -51,6 +52,13 @@ internal sealed class TrackerWindow : IDisposable
 
     /// <summary>Shows the window and brings it to the front. Safe from any thread.</summary>
     public void Show() => OnUi(OpenForm);
+
+    /// <summary>Sets the window's colours, now if it is built, else when it is. Safe from any thread.</summary>
+    public void SetTheme(WindowTheme theme) => OnUi(() =>
+    {
+        _theme = theme;
+        _form?.SetTheme(theme);
+    });
 
     /// <summary>Gives the page its next message, kept for a window not built yet. Safe from any thread.</summary>
     public void Post(string message) => OnUi(() =>
@@ -114,7 +122,7 @@ internal sealed class TrackerWindow : IDisposable
     {
         if (_form is null || _form.IsDisposed)
         {
-            _form = new ViewForm(_viewDir, _userDataDir, _icon!, _log);
+            _form = new ViewForm(_viewDir, _userDataDir, _icon!, _theme, _log);
             _form.HiddenByUser += OnHidden;
             if (_latest is { } message) _form.Post(message);
         }
