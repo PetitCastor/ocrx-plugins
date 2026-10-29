@@ -45,9 +45,11 @@ dropped as non-moves and stay dropped.
 
 ## Station inventory open and close
 
-- **Open:** `<RequestLocationInventory> ... Location[<name>]`. Kind `opened`, `ref` = the name,
-  `detail` = the location id the player was standing in, when known. The name-only line is still
-  paired with the id exactly as before. For a freight kiosk the id of the same open is on the
+- **Open:** `<RequestLocationInventory> ... Location[<name>]`. Kind `opened`, `ref` = the location id
+  (the same key as `closed`), `detail` = the name. The line carries only the name, so the id is the
+  one waiting for it from the last `Update Inventory Location` (within 30 s), else the id the name is
+  already bound to in `location_name`, else null: a null `ref` means pair it with the nearest
+  `closed` or freight page by time. For a freight kiosk the id of the same open is also on the
   `Freight Inventory Grid Requesting Inventory[...]` line a millisecond earlier.
 - **Close:** `<Request Terminate Access To Inventory> Player[X] terminating access to [<id>:Location:<loc>]`
   (preceded by `<Remove Inventory Container UI> ... removed from UI`, and in a full close by
@@ -67,7 +69,7 @@ frame shows; this one bounds the interval.
 ```
 
 Present in the August 2026 backups (two buys, 2026-08-09 and 2026-08-14), absent from the current
-build's log. Stored as `shop_buy` (`ref` = shop, `detail` = `item xN @ price`) and `shop_flow`
+build's log. Stored as `shop_buy` (`ref` = shop, `detail` = `item xN @ price`, price omitted when unreadable) and `shop_flow`
 (`detail` = `type: result (state)`). The buy does not say which inventory the item lands in, so it
 does not feed the ledger.
 

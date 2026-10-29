@@ -378,7 +378,7 @@ public static class ReliabilityStudy
     /// ledger believes are stored there. The total is exact when the list was scrolled to its
     /// end; the ledger is not, so a gap is information about the ledger, not an error in either.
     /// </summary>
-    private static void MeasureFreight(TrackerDb db, IReadOnlyList<ItemHolding> holdings, ReliabilityReport report)
+    internal static void MeasureFreight(TrackerDb db, IReadOnlyList<ItemHolding> holdings, ReliabilityReport report)
     {
         var ledger = holdings
             .Where(h => h.IsAtStation && h.Root is not null)

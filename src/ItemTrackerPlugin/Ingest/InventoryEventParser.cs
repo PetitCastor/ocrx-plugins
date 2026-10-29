@@ -460,7 +460,7 @@ public static partial class InventoryEventParser
         var m = PlayerRequestComplete().Match(line.Rest);
         if (!m.Success) return null;
 
-        var requestNo = int.Parse(m.Groups["req"].Value);
+        if (!int.TryParse(m.Groups["req"].Value, out var requestNo)) return null;
         var result = m.Groups["result"].Value;
 
         // A stack moves nothing, so its completion has no move to resolve; it is a signal
@@ -500,7 +500,7 @@ public static partial class InventoryEventParser
         return new ShopBuyRequested(
             line.Timestamp, m.Groups["shop"].Value, m.Groups["item"].Value, quantity,
             double.TryParse(m.Groups["price"].Value, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out var price) ? price : 0);
+                System.Globalization.CultureInfo.InvariantCulture, out var price) ? price : null);
     }
 
     private static InventoryEvent? ParseShopFlow(LogLine line)
@@ -516,12 +516,9 @@ public static partial class InventoryEventParser
     private static InventoryEvent? ParseComplete(LogLine line, Regex pattern)
     {
         var m = pattern.Match(line.Rest);
-        if (!m.Success) return null;
+        if (!m.Success || !int.TryParse(m.Groups["req"].Value, out var requestNo)) return null;
 
-        return new MoveCompleted(
-            line.Timestamp,
-            int.Parse(m.Groups["req"].Value),
-            m.Groups["result"].Value);
+        return new MoveCompleted(line.Timestamp, requestNo, m.Groups["result"].Value);
     }
 
     private static InventoryEvent? ParseTokenFlow(LogLine line)

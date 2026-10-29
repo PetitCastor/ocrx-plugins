@@ -127,6 +127,26 @@ public class LogGapParserTests
     }
 
     [Fact]
+    public void An_unreadable_kiosk_price_is_unknown_not_zero()
+    {
+        var buy = Assert.IsType<ShopBuyRequested>(Event(
+            "<2026-08-09T12:01:52.875Z> [Notice] <CEntityComponentShopUIProvider::SendShopBuyRequest> " +
+            "Sending SShopBuyRequest - playerId[1] shopId[2] shopName[SCShop_Cargo_Office] kioskId[3] " +
+            "client_price[n/a] itemClassGUID[x] itemName[grin_tractor_01] quantity[1]  [Team_CoreGameplayFeatures][Shops][UI]"));
+
+        Assert.Null(buy.Price);
+    }
+
+    [Theory]
+    [InlineData("Player Inventory Request Complete", "Request[99999999999] for 'Pilot' [2001] Type[StackAll] Result[Succeed] Item[0]")]
+    [InlineData("Player Inventory Request Complete", "Request[99999999999] for 'Pilot' [2001] Type[Move] Result[Succeed] Item[0]")]
+    [InlineData("Inventory Request Completed", "Request[99999999999] Player[Pilot] Result[succeed]")]
+    public void A_request_number_too_large_to_read_is_dropped_not_thrown(string tag, string body)
+    {
+        Assert.Null(Event($"<2026-08-04T11:54:30.473Z> [Notice] <{tag}> {body}. [Team_CoreGameplayFeatures][Inventory]"));
+    }
+
+    [Fact]
     public void A_kiosk_quantity_too_large_to_read_is_dropped_not_thrown()
     {
         Assert.Null(Event(

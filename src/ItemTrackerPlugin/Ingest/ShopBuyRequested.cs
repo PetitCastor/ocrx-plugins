@@ -10,4 +10,4 @@ public sealed record ShopBuyRequested(
     string ShopName,
     string ItemName,
     int Quantity,
-    double Price) : InventoryEvent(Timestamp);
+    double? Price) : InventoryEvent(Timestamp);

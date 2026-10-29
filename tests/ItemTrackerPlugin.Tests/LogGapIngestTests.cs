@@ -26,7 +26,9 @@ public sealed class LogGapIngestTests : IDisposable
         Directory.Delete(_dir, recursive: true);
     }
 
-    private string Next() => $"2026-10-28T19:29:{_second++:00}.000Z";
+    private string Next() =>
+        new DateTime(2026, 10, 28, 19, 0, 0, DateTimeKind.Utc).AddSeconds(_second++)
+            .ToString("yyyy-MM-dd'T'HH:mm:ss.000'Z'", CultureInfo.InvariantCulture);
 
     private string Page(string next, string end, string station = Station) =>
         $"<{Next()}> [Notice] <InventoryManagement> Freight Inventory Grid InventoryDataRequest Successful " +
@@ -139,8 +141,49 @@ public sealed class LogGapIngestTests : IDisposable
         Assert.Equal(0, second.SignalsRecorded);
         Assert.Equal("stack,opened,closed",
             Scalar("SELECT group_concat(kind) FROM (SELECT kind FROM log_signal ORDER BY ts)"));
-        Assert.Equal("AsteroidClusterBase_Nyx_Social_Keeger_001", Scalar("SELECT ref FROM log_signal WHERE kind = 'opened'"));
+        Assert.Equal("AsteroidClusterBase_Nyx_Social_Keeger_001", Scalar("SELECT detail FROM log_signal WHERE kind = 'opened'"));
         Assert.Equal(Station, Scalar("SELECT ref FROM log_signal WHERE kind = 'closed'"));
+    }
+
+    [Fact]
+    public void An_open_is_keyed_by_the_location_id_waiting_for_its_name()
+    {
+        Ingest(
+            $"<{Next()}> [Notice] <Update Inventory Location> Player [Pilot] is changing location. " +
+            $"Landing [0] -> [0]. Location [1] -> [{Station}]. [Team_CoreGameplayFeatures][Inventory]",
+            $"<{Next()}> [Notice] <RequestLocationInventory> Player[Pilot] requested inventory for " +
+            "Location[AsteroidClusterBase_Nyx_Social_Keeger_001] [Team_CoreGameplayFeatures][Inventory]");
+
+        // The same key the close of that inventory uses, so IT-03 can match the two.
+        Assert.Equal(Station, Scalar("SELECT ref FROM log_signal WHERE kind = 'opened'"));
+    }
+
+    [Fact]
+    public void A_later_open_of_an_already_named_station_resolves_its_id_from_the_name()
+    {
+        Ingest(
+            $"<{Next()}> [Notice] <Update Inventory Location> Player [Pilot] is changing location. " +
+            $"Landing [0] -> [0]. Location [1] -> [{Station}]. [Team_CoreGameplayFeatures][Inventory]",
+            $"<{Next()}> [Notice] <RequestLocationInventory> Player[Pilot] requested inventory for " +
+            "Location[AsteroidClusterBase_Nyx_Social_Keeger_001] [Team_CoreGameplayFeatures][Inventory]");
+        _second += 60;
+
+        Ingest(
+            $"<{Next()}> [Notice] <RequestLocationInventory> Player[Pilot] requested inventory for " +
+            "Location[AsteroidClusterBase_Nyx_Social_Keeger_001] [Team_CoreGameplayFeatures][Inventory]");
+
+        Assert.Equal("2", Scalar($"SELECT COUNT(*) FROM log_signal WHERE kind = 'opened' AND ref = '{Station}'"));
+    }
+
+    [Fact]
+    public void A_kiosk_buy_with_an_unreadable_price_keeps_the_rest()
+    {
+        Ingest(
+            $"<{Next()}> [Notice] <CEntityComponentShopUIProvider::SendShopBuyRequest> Sending SShopBuyRequest - " +
+            "playerId[1] shopId[2] shopName[SCShop_Cargo_Office] kioskId[3] client_price[n/a] " +
+            "itemClassGUID[27adea05] itemName[grin_tractor_01] quantity[2]  [Team_CoreGameplayFeatures][Shops][UI]");
+
+        Assert.Equal("grin_tractor_01 x2", Scalar("SELECT detail FROM log_signal WHERE kind = 'shop_buy'"));
     }
 
     [Fact]

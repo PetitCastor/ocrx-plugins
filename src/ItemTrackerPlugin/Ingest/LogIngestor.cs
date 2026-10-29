@@ -510,7 +510,8 @@ public sealed class LogIngestor(TrackerDb db, string logDir, DateTimeOffset? fro
 
             case ShopBuyRequested buy:
                 if (RecordSignal(cn, tx, sessionId, lineOffset, "shop_buy", buy.Timestamp, buy.ShopName,
-                        FormattableString.Invariant($"{buy.ItemName} x{buy.Quantity} @ {buy.Price:0.##}")))
+                        FormattableString.Invariant($"{buy.ItemName} x{buy.Quantity}") +
+                        (buy.Price is { } price ? FormattableString.Invariant($" @ {price:0.##}") : "")))
                     stats.SignalsRecorded++;
                 break;
 
@@ -563,10 +564,14 @@ public sealed class LogIngestor(TrackerDb db, string logDir, DateTimeOffset? fro
             case LocationNamed named:
             {
                 // The station inventory opens whether or not an id is waiting for its name.
-                // This line carries only the name; ref is that, detail the place the player
-                // stood in, which is the station's id when they are at it.
-                if (RecordSignal(cn, tx, sessionId, lineOffset, "opened", named.Timestamp, named.Name,
-                        state.CurrentLocation?.LocationId))
+                // ref is the location id, the same key "closed" uses: the id waiting for this
+                // name when there is one, else whatever id the name is already bound to, else
+                // null. detail is the name.
+                var openedId = state.PendingLocationIds.Count > 0 &&
+                               named.Timestamp - state.PendingSince <= LocationPairingWindow
+                    ? state.PendingLocationIds[0]
+                    : LocationIdOf(cn, tx, named.Name);
+                if (RecordSignal(cn, tx, sessionId, lineOffset, "opened", named.Timestamp, openedId, named.Name))
                     stats.SignalsRecorded++;
 
                 if (state.PendingLocationIds.Count == 0) break;
@@ -676,6 +681,16 @@ public sealed class LogIngestor(TrackerDb db, string logDir, DateTimeOffset? fro
         cmd.Parameters.AddWithValue("$ts", totalTs);
         cmd.ExecuteNonQuery();
         return true;
+    }
+
+    /// <summary>The location id a name is already bound to, if any.</summary>
+    private static string? LocationIdOf(SqliteConnection cn, SqliteTransaction tx, string name)
+    {
+        using var cmd = cn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "SELECT location_id FROM location_name WHERE name = $n ORDER BY first_seen LIMIT 1";
+        cmd.Parameters.AddWithValue("$n", name);
+        return cmd.ExecuteScalar() as string;
     }
 
     private static bool RecordSignal(
