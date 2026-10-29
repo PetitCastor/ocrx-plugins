@@ -1,0 +1,14 @@
+{
+  "tag": "v0.1.0-itemtracker-alpha.1",
+  "channel": "preview",
+  "plugins": [
+    "ItemTrackerPlugin"
+  ],
+  "notes": "Item Tracker alpha preview, the first build. Unsigned, opt-in, and may change incompatibly between previews. Needs OCRX engine v2.1.0 or later for its page in the OCRX window. Built on Ocrx.Sdk 2.9.0.",
+  "changes": [
+    "Added: Item Tracker rebuilds where your Star Citizen items are from Game.log, and labels each one verified, deduced, stale or in conflict.",
+    "Added: Opening an inventory screen in game reads the items on screen and confirms or corrects what Game.log says.",
+    "Added: An Item Tracker page in the OCRX window lists your items by location, read-only.",
+    "Added: While a kiosk or ship locker is open, a status line in game shows the page, and at a known station's kiosk how many items are verified or in conflict."
+  ]
+}

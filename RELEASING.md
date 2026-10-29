@@ -1,6 +1,9 @@
 # Releasing plugins
 
-`SignaturePlugin` is the only releasable plugin, on both the stable and the preview channel.
+`SignaturePlugin` and `ItemTrackerPlugin` are the releasable plugins. `SignaturePlugin` ships on both
+the stable and the preview channel; `ItemTrackerPlugin` ships on the preview channel only, as tags like
+`v0.1.0-itemtracker-alpha.1`; `$PreviewOnlyPlugins` in the same script rejects a stable descriptor that
+selects it (see "Promoting a second plugin to stable" below).
 `MissionPlugin` and `RefineryPlugin` remain under `src/` as frozen proofs of concept: they are
 outside `OcrxPlugins.slnx`, nothing builds or tests them, and `$AllowedPlugins` in
 `scripts/ReleaseDescriptor.Validate.ps1` rejects any descriptor that selects one. Reviving either
@@ -10,7 +13,8 @@ and CI in the same PR.
 ## Prepare and publish a release
 
 1. Add `.github/release-manifests/<tag>.json` in the release PR. Stable tags are `v1.2.3`; preview
-   tags name the plugin and the stage, as in `v1.2.4-signature-alpha.1` or `v1.2.4-signature-beta.2`.
+   tags name the plugin and the stage, as in `v1.2.4-signature-alpha.1`, `v1.2.4-signature-beta.2` or
+   `v0.1.0-itemtracker-alpha.1`.
    A stable descriptor must list its `changes`, one user-facing `Kind: text` line per change; they become
    the release's `CHANGELOG.md` asset, which the engine shows before and after an update. See
    `.github/release-manifests/README.md`.
@@ -42,6 +46,15 @@ and CI in the same PR.
    up at all. Promoting a plugin to stable must remove its id from `plugins.preview.json` in the
    same PR that adds it to `plugins.json` — an id present in both is also rejected outright.
    `scripts/Test-PluginCatalog.ps1` (run in CI on every PR) enforces all of this before merge.
+
+## Promoting a second plugin to stable
+
+Not yet possible without breaking SignaturePlugin's updates. GitHub's `releases/latest` is the newest
+stable release of the whole repository, not of one plugin. A stable `ItemTrackerPlugin` release would
+become `latest`, and `releases/latest/download/SignaturePlugin-win-x64.zip`, the URL SignaturePlugin's
+update detection depends on, would 404 because that release carries no SignaturePlugin zip. Previews
+are GitHub prereleases (the Release workflow passes `--prerelease` for `"channel": "preview"`), which
+never become `latest`, so they are safe. Give each plugin its own update URL first, in its own change.
 
 ## Preview testers
 
