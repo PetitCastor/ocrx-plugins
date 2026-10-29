@@ -104,4 +104,33 @@ public sealed class TooltipParserTests
         Assert.Null(TooltipParser.Parse(["CAPACITY: BI/SOOO scu", "CLEAR", "FILTERS"]));
         Assert.Null(TooltipParser.Parse([]));
     }
+
+    [Fact]
+    public void First_block_wins_when_the_comparison_volume_line_is_garbled()
+    {
+        var tooltip = TooltipParser.Parse(
+        [
+            "Aztalan Arms", "Volume: 8000 pscu", "Manufacturer: Tehachapi", "Item Type: Light Armor", "Registered To You",
+            "ORC-mkV Arms", "Volurne: 10000 pscu", "Manufacturer: Clark", "Item Type: Medium Armor",
+        ]);
+
+        Assert.Equal("Tehachapi", tooltip?.Manufacturer);
+        Assert.Equal("Light Armor", tooltip?.ItemType);
+    }
+
+    [Theory]
+    [InlineData("Capacity 5000 pscu")]
+    [InlineData("Capaclty: 5000 pscu")]
+    public void Container_capacity_line_is_not_part_of_the_name(string capacity)
+    {
+        var tooltip = TooltipParser.Parse(["Aztalan Legs", capacity, "Volume: 36000 pscu"]);
+
+        Assert.Equal("Aztalan Legs", tooltip?.Name);
+    }
+
+    [Theory]
+    [InlineData("ltem Type: Pistol")]
+    [InlineData("1tem Type: Pistol")]
+    public void A_misread_capital_i_in_item_type_still_reads(string line) =>
+        Assert.Equal("Pistol", TooltipParser.Parse(["Arclight", "Volume: 2500 pscu", line])?.ItemType);
 }

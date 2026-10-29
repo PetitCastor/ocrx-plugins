@@ -89,6 +89,12 @@ public sealed class HoverDetectorTests
     }
 
     [Fact]
+    public void A_run_wider_than_two_slots_is_a_panel_edge()
+    {
+        Assert.Null(HoverDetector.Find(Bands(1.0, (3, 1878, 2466, Hovered), (4, 1878, 2466, Hovered))));
+    }
+
+    [Fact]
     public void A_short_run_is_an_icon_not_an_edge()
     {
         Assert.Null(HoverDetector.Find(Bands(1.0, (3, 2032, 2100, Hovered), (4, 2032, 2100, Hovered))));

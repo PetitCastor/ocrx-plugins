@@ -24,7 +24,7 @@ public static partial class TooltipParser
     /// Freight Manager's junk or a button label.</summary>
     public static TooltipReading? Parse(IReadOnlyList<string> lines)
     {
-        var block = FirstBlock(lines.Select(l => OcrDigits.Normalise(l).Trim()).Where(l => l.Length > 0).ToList());
+        var block = FirstBlock(lines.Select(l => ItemWord().Replace(OcrDigits.Normalise(l).Trim(), "Item")).Where(l => l.Length > 0).ToList());
         var volumeAt = block.FindIndex(l => VolumeLine().IsMatch(l));
         if (volumeAt < 1) return null;
 
@@ -42,13 +42,15 @@ public static partial class TooltipParser
 
         foreach (var line in block.Skip(volumeAt + 1))
         {
+            // First one wins: a comparison tooltip whose Volume line OCR garbled is not cut off,
+            // and its fields must not replace the item's own.
             if (line.StartsWith("Registered To You", StringComparison.OrdinalIgnoreCase)) registered = true;
-            else if (Value(line, "Manufacturer") is { } m) manufacturer = FixAmpersand(m);
-            else if (Value(line, "Item Type") is { } t) itemType = ResolveItemType(t);
-            else if (Value(line, "Class") is { } c) cls = c;
-            else if (Value(line, "Ammo Count") is { } a) ammo = a;
-            else if (Value(line, "Contents Remaining") is { } r) contents = r;
-            else if (Value(line, "Size") is { } s && int.TryParse(s.Trim(), out var n)) size = n;
+            else if (Value(line, "Manufacturer") is { } m) manufacturer ??= FixAmpersand(m);
+            else if (Value(line, "Item Type") is { } t) itemType ??= ResolveItemType(t);
+            else if (Value(line, "Class") is { } c) cls ??= c;
+            else if (Value(line, "Ammo Count") is { } a) ammo ??= a;
+            else if (Value(line, "Contents Remaining") is { } r) contents ??= r;
+            else if (Value(line, "Size") is { } s && int.TryParse(s.Trim(), out var n)) size ??= n;
         }
 
         return new TooltipReading(name, volume, manufacturer, itemType, cls, size, ammo, contents, registered);
@@ -90,7 +92,11 @@ public static partial class TooltipParser
     [GeneratedRegex(@"^Volume\s*[:;]?\s*(?<v>\d+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex VolumeLine();
 
-    [GeneratedRegex(@"^Capacity\s*[:;]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    /// <summary>A capital I read as a lowercase l or a one.</summary>
+    [GeneratedRegex(@"^[Il1]tem(?=\s*Type)", RegexOptions.CultureInvariant)]
+    private static partial Regex ItemWord();
+
+    [GeneratedRegex(@"^Capac\w*\s*[:;]?\s*\d", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex CapacityLine();
 
     [GeneratedRegex(@"^\s*[:;]", RegexOptions.CultureInvariant)]

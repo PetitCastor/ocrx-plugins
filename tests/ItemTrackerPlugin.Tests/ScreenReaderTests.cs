@@ -20,15 +20,6 @@ public sealed class ScreenReaderTests
     private static TickDataBuilder WithTooltip(TickDataBuilder b, RoiId id, params string[] lines) =>
         b.Detailed(id, lines.Select(l => (OcrLineSpec)l).ToArray());
 
-    private static TickDataBuilder WithHoveredTile(TickDataBuilder b)
-    {
-        // Solid border-coloured bands: every band holds a full-width run, so the first pair of
-        // consecutive bands, 0 and 1, reads as the hovered tile of row 0.
-        for (var band = 0; band <= GridLayout.Rows; band++)
-            b.Pixels(ScreenRois.Band(band), 68, 59, 45, (int)GridLayout.BorderBand(band).Width, (int)GridLayout.BorderBand(band).Height);
-        return b;
-    }
-
     [Fact]
     public void Header_read_gives_the_context()
     {
@@ -48,13 +39,13 @@ public sealed class ScreenReaderTests
     [Fact]
     public void Kiosk_tooltip_page_and_badge_make_one_observation()
     {
-        var b = WithHoveredTile(WithTooltip(Headers("LOCAL/ LOCAL"), ScreenRois.TooltipRight, BadgerTooltip));
+        var b = WithTooltip(Headers("LOCAL/ LOCAL"), ScreenRois.TooltipRight, BadgerTooltip);
         b.Text(ScreenRois.Page(2), "1/4");
         b.Detailed(ScreenRois.Capacity, "CAPACITY:", "662M/5G", "SCU");
-        // The solid bands read as a two-slot tile at column 0, so its badge is in cell (0, 1).
+        // A wide tile at column 0 draws its badge in cell (0, 1).
         b.Text(ScreenRois.Badge(0, 1, 4), "").Text(ScreenRois.Badge(0, 1, 6), "2x").Text(ScreenRois.Badge(0, 1, 8), "");
 
-        var observation = Reader.Read(b.Build(), new ScreenHeader(ScreenContext.Kiosk, null));
+        var observation = new ScreenReader(() => null, _ => new GridTile(0, 0, 2)).Read(b.Build(), new ScreenHeader(ScreenContext.Kiosk, null));
 
         Assert.NotNull(observation);
         Assert.Equal(ScreenContext.Kiosk, observation.Panel);
@@ -63,7 +54,7 @@ public sealed class ScreenReaderTests
         Assert.Equal(new PageCounter(1, 4), observation.Page);
         Assert.Equal(new CapacityReading(662_000_000, 5_000_000_000), observation.Capacity);
         Assert.Equal(2, observation.Quantity);
-        Assert.Equal(0, observation.Tile?.Row);
+        Assert.Equal(new GridTile(0, 0, 2), observation.Tile);
     }
 
     [Fact]

@@ -4,8 +4,10 @@ using Ocrx.Sdk;
 namespace ItemTrackerPlugin.Screen;
 
 /// <summary>Turns one tick into the screen's context and, when an item is hovered, an observation.</summary>
-public sealed class ScreenReader(Func<ItemClassResolver?> classes)
+public sealed class ScreenReader(Func<ItemClassResolver?> classes, Func<TickData, GridTile?>? hover = null)
 {
+    private readonly Func<TickData, GridTile?> _hover = hover ?? HoveredTile;
+
     /// <summary>Null when a header did not read this tick: the screen is then unknown, not changed.</summary>
     public static ScreenHeader? ReadHeader(TickData tick)
     {
@@ -30,7 +32,7 @@ public sealed class ScreenReader(Func<ItemClassResolver?> classes)
             var capacity = tick.TryGetOcr(ScreenRois.Capacity, out var cap)
                 ? CapacityParser.Parse(string.Join(' ', cap.Lines.Select(l => l.Text)))
                 : null;
-            var tile = HoveredTile(tick);
+            var tile = _hover(tick);
             return Build(header.Context, header.Detail, right, QuantityAt(tick, tile), tile, page, capacity, "tooltip-right");
         }
 

@@ -18,7 +18,8 @@ public static partial class CapacityParser
     private static long? ToMicroScu(string number, string suffix)
     {
         if (!double.TryParse(number, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)) return null;
-        var factor = suffix.ToUpperInvariant() switch { "K" => 1e3, "M" => 1e6, "G" => 1e9, _ => 1 };
+        // No suffix means the figure is in whole SCU, as the freight screens print it.
+        var factor = suffix.ToUpperInvariant() switch { "K" => 1e3, "M" => 1e6, "G" => 1e9, _ => 1e6 };
         return (long)Math.Round(value * factor);
     }
 

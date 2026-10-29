@@ -21,7 +21,7 @@ public sealed class ScreenParserTests
     [Theory]
     [InlineData("662M/5G", 662_000_000L, 5_000_000_000L)]
     [InlineData("7K/750K", 7_000L, 750_000L)]
-    [InlineData("CAPACITY: 61/5000 SCU", 61L, 5000L)]
+    [InlineData("CAPACITY: 61/5000 SCU", 61_000_000L, 5_000_000_000L)]
     [InlineData("0/117K", 0L, 117_000L)]
     [InlineData("6ø2M/5G", 602_000_000L, 5_000_000_000L)]
     public void Capacity_is_in_micro_scu(string text, long used, long max)

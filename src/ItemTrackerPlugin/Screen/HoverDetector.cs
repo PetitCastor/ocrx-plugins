@@ -37,7 +37,10 @@ public static class HoverDetector
 
                 var column = (int)Math.Round((double)(top.Start - CornerInset - GridLayout.OriginX) / GridLayout.SlotPitch);
                 var span = (int)Math.Round((double)(top.End - top.Start + 2 * CornerInset) / GridLayout.SlotPitch);
-                return new GridTile(row, Math.Clamp(column, 0, GridLayout.Columns - 1), Math.Clamp(span, 1, 2));
+                // A run wider than two slots is a panel edge or a divider, not a tile.
+                if (span is < 1 or > 2) continue;
+
+                return new GridTile(row, Math.Clamp(column, 0, GridLayout.Columns - 1), span);
             }
         }
 

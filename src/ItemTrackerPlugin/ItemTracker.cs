@@ -32,6 +32,14 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
     private readonly bool _fixedSet;
     private IReadOnlyList<RoiSubscription> _rois;
     private ItemClassResolver? _classes;
+    private readonly bool _startHost;
+    private int _leaveTicks;
+    private string? _lastShown;
+    private int? _lastQuantity;
+
+    /// <summary>Ticks in a row that must want the headers alone before an inventory screen's set is
+    /// dropped, so one misread header does not cost two subscription round trips.</summary>
+    private const int LeaveAfterTicks = 3;
 
     public ItemTracker() : this(fixedSet: false)
     {
@@ -41,9 +49,11 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
     /// feeds frames faster than a changed set can take effect (seven ticks in the 11-frame kiosk
     /// corpus), so its expectations need the full set from the start. It costs about 150 ms per
     /// scan against 50 ms for the headers alone, which is why live use switches.</param>
-    internal ItemTracker(bool fixedSet)
+    /// <param name="startHost">False keeps the ledger from starting, for tests of the screen side.</param>
+    internal ItemTracker(bool fixedSet, bool startHost = true)
     {
         _fixedSet = fixedSet;
+        _startHost = startHost;
         _rois = fixedSet ? ScreenRois.For(ScreenContext.Kiosk) : ScreenRois.Idle;
         _screen = new ScreenReader(CurrentClasses);
     }
@@ -64,20 +74,57 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
     /// </summary>
     public async Task OnTickAsync(TickContext ctx, CancellationToken ct)
     {
-        if (_host is null && DateTime.UtcNow >= _nextStartAttempt)
+        if (_startHost && _host is null && DateTime.UtcNow >= _nextStartAttempt)
             await StartAndPublishAsync(ctx.Services, ct);
 
         if (ScreenReader.ReadHeader(ctx.Tick) is not { } header) return;
 
-        if (_screen.Read(ctx.Tick, header) is { } observation)
-            ctx.Services.Emit(ScreenRecord.From(observation, ctx.Tick.Timestamp, ctx.Tick.FrameSeq, Name));
+        Observe(ctx, _screen.Read(ctx.Tick, header));
 
         var wanted = ScreenRois.For(header.Context);
-        if (!_fixedSet && !ReferenceEquals(wanted, _rois))
+        if (_fixedSet || ReferenceEquals(wanted, _rois))
         {
-            _rois = wanted;
+            _leaveTicks = 0;
+            return;
+        }
+
+        if (ReferenceEquals(wanted, ScreenRois.Idle) && ++_leaveTicks < LeaveAfterTicks) return;
+
+        _leaveTicks = 0;
+        var previous = _rois;
+        _rois = wanted;
+        try
+        {
             await ctx.Services.UpdateRoisAsync(wanted, ct);
         }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The engine still has the old set; remember that so the next tick asks again. A
+            // reconnect needs no help: the SDK re-reads Rois, which is the set wanted.
+            _rois = previous;
+            ctx.Services.Log($"ItemTrackerPlugin: could not switch regions, retrying: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// A hovered item stays hovered for many ticks, so live use emits when what is shown changes,
+    /// not on every tick. A replay emits every frame: each is its own observation there.
+    /// </summary>
+    private void Observe(TickContext ctx, ScreenObservation? observation)
+    {
+        if (observation is null)
+        {
+            _lastShown = null;
+            return;
+        }
+
+        var shown = $"{observation.Panel}|{observation.ShipModel}|{observation.Tooltip.Name}|{observation.Page}";
+        var unchanged = shown == _lastShown && (observation.Quantity is null || observation.Quantity == _lastQuantity);
+        if (!_fixedSet && unchanged) return;
+
+        _lastQuantity = shown == _lastShown ? observation.Quantity ?? _lastQuantity : observation.Quantity;
+        _lastShown = shown;
+        ctx.Services.Emit(ScreenRecord.From(observation, ctx.Tick.Timestamp, ctx.Tick.FrameSeq, Name));
     }
 
     /// <summary>The game's item names, loaded once the log folder is known.</summary>
@@ -129,6 +176,7 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
         var wipeDateEdit = apply.Values.FirstOrDefault(v => v.Id == WipeDateSettingId);
         if (logDirEdit is null && wipeDateEdit is null) return;
 
+        _classes = null;
         var options = _host.Options;
         var logDir = logDirEdit is null ? options.LogDir
             : string.IsNullOrWhiteSpace(logDirEdit.Value) ? LogFileLocator.DefaultLogDir
