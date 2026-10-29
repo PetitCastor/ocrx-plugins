@@ -57,5 +57,6 @@ A preview descriptor looks the same with `"channel": "preview"`, a preview tag, 
 Stable tags use `v<major>.<minor>.<patch>`. Preview tags use
 `v<major>.<minor>.<patch>-<plugin>-<alpha|beta|rc>.<n>` and select exactly one plugin.
 
-`SignaturePlugin` is the only selectable plugin; see `RELEASING.md` for why the other two under
-`src/` are not.
+`SignaturePlugin` and `ItemTrackerPlugin` (preview tag short name `itemtracker`) are the selectable
+plugins; see `RELEASING.md` for why the other two under `src/` are not, and why `ItemTrackerPlugin`
+stays on the preview channel for now.
