@@ -2,7 +2,7 @@
 
 Turns frames of the kiosk, ship storage and personal inventory screens into observations: at the
 time of a frame, panel P showed item C, with a quantity, a page and a tile. Nothing here compares
-an observation with the Game.log ledger; that is reconciliation (TASK-IT-04).
+an observation with the Game.log ledger; that is reconciliation, in [`../reconcile`](../reconcile/README.md).
 
 ## What it reads
 

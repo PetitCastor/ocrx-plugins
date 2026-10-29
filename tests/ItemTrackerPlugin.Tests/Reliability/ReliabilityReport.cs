@@ -185,6 +185,17 @@ public sealed class ReliabilityReport(string corpus, int files, long bytes)
             foreach (var row in PlacementTable) sb.AppendLine(row);
         }
 
+        if (Counts.ContainsKey("state.deduced"))
+        {
+            sb.AppendLine();
+            sb.AppendLine("## Placement states");
+            sb.AppendLine();
+            sb.AppendLine("Rows per state after reconciling with the screen observations in the store (none for a log-only corpus).");
+            sb.AppendLine();
+            foreach (var state in new[] { "verified", "deduced", "stale", "conflict" })
+                sb.AppendLine($"- {state}: {Get($"state.{state}"):N0}");
+        }
+
         if (FreightTable.Count > 0)
         {
             sb.AppendLine();

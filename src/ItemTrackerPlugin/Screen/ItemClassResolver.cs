@@ -26,7 +26,8 @@ public sealed partial class ItemClassResolver
             if (display.Length == 0) continue;
 
             if (!_byName.TryGetValue(display, out var classes)) _byName[display] = classes = [];
-            classes.Add(key[NameKeyPrefix.Length..]);
+            // Some keys put an underscore between the prefix and the class: item_Name_thp_light_arms_01_01_01.
+            classes.Add(key[NameKeyPrefix.Length..].TrimStart('_'));
         }
     }
 

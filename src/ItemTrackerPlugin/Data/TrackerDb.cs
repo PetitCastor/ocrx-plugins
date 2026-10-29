@@ -428,6 +428,27 @@ public sealed class TrackerDb
         );
         CREATE INDEX IF NOT EXISTS ix_log_signal_kind ON log_signal(kind, ts);
 
+        -- What an inventory screen showed, one row per hovered item (TASK-IT-04). Not derived from
+        -- the logs, so neither a rebuild nor a schema change drops it, like place_name. The station
+        -- is not stored: it comes from the log's inventory-open lines when reconciling, and the log
+        -- may be read after the frame.
+        CREATE TABLE IF NOT EXISTS screen_observation (
+            id         INTEGER PRIMARY KEY,
+            ts         TEXT    NOT NULL,
+            panel      TEXT    NOT NULL,
+            ship       TEXT,
+            name       TEXT    NOT NULL,
+            item_class TEXT,
+            quantity   INTEGER,
+            page       INTEGER,
+            pages      INTEGER,
+            tile_row   INTEGER,
+            tile_col   INTEGER,
+            roi        TEXT    NOT NULL,
+            raw        TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS ix_screen_observation_ts ON screen_observation(ts);
+
         CREATE TABLE IF NOT EXISTS meta (
             key   TEXT PRIMARY KEY,
             value TEXT

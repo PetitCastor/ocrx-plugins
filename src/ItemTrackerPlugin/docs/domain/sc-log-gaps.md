@@ -9,7 +9,7 @@ metadata:
 
 None of these changes what the ledger believes an item is. They are context for matching what the
 game showed on screen against what the log says, and are stored in `freight_total` and
-`log_signal` (parser version 8, schema 18). Verified against the 2026-10-28 `Game.log` and the
+`log_signal` (parser version 9, schema 18). Verified against the 2026-10-28 `Game.log` and the
 `logbackups` folder (build 12344265 and later).
 
 ## Freight total
@@ -46,9 +46,12 @@ dropped as non-moves and stay dropped.
 ## Station inventory open and close
 
 - **Open:** `<RequestLocationInventory> ... Location[<name>]`. Kind `opened`, `ref` = the location id
-  (the same key as `closed`), `detail` = the name. The line carries only the name, so the id is the
-  one waiting for it from the last `Update Inventory Location` (within 30 s), else the id the name is
-  already bound to in `location_name`, else null: a null `ref` means pair it with the nearest
+  (the same key as `closed`), `detail` = the name. The line carries only the name, so the id is one
+  waiting for it from the last `Update Inventory Location` (within 30 s), else the id the name is
+  already bound to in `location_name`, else null. Of two ids waiting, the one the name is already
+  bound to wins: a move inside a station waits the sub-location first (`Location [0] -> [2204875565]`
+  with `Landing [3058615591]`), and the kiosk opens the station's inventory (parser version 9).
+  A null `ref` means pair it with the nearest
   `closed` or freight page by time. For a freight kiosk the id of the same open is also on the
   `Freight Inventory Grid Requesting Inventory[...]` line a millisecond earlier.
 - **Close:** `<Request Terminate Access To Inventory> Player[X] terminating access to [<id>:Location:<loc>]`

@@ -2,6 +2,7 @@ using System.Globalization;
 using ItemTrackerPlugin.App;
 using ItemTrackerPlugin.Ingest;
 using ItemTrackerPlugin.Naming;
+using ItemTrackerPlugin.Reconcile;
 using ItemTrackerPlugin.Screen;
 using Ocrx.Sdk;
 
@@ -11,7 +12,8 @@ namespace ItemTrackerPlugin;
 /// The OCRX side of the tracker. The ledger comes from Game.log, followed by
 /// <see cref="LogWatchService"/> on its own loop; this class starts that loop, carries its two
 /// settings to and from the engine's Settings panel, and turns the inventory screens into
-/// observations (<see cref="ScreenReader"/>). It does not reconcile the two.
+/// observations (<see cref="ScreenReader"/>), which it stores for the reconciliation the ledger
+/// snapshot runs (<see cref="Reconciler"/>).
 /// </summary>
 public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
 {
@@ -125,6 +127,26 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
         _lastQuantity = shown == _lastShown ? observation.Quantity ?? _lastQuantity : observation.Quantity;
         _lastShown = shown;
         ctx.Services.Emit(ScreenRecord.From(observation, ctx.Tick.Timestamp, ctx.Tick.FrameSeq, Name));
+        Store(ctx, observation);
+    }
+
+    /// <summary>
+    /// Keeps the observation for the next rebuild of the ledger snapshot. The time is the read's, not
+    /// the tick's: a replay tick carries replay time, and a replay writes to its own throwaway store.
+    /// A failed write costs one observation, never the tick.
+    /// </summary>
+    private void Store(TickContext ctx, ScreenObservation observation)
+    {
+        if (_host is null) return;
+
+        try
+        {
+            ObservationStore.Add(_host.Db, observation, DateTimeOffset.UtcNow);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            ctx.Services.Log($"ItemTrackerPlugin: could not store an observation: {ex.Message}");
+        }
     }
 
     /// <summary>The game's item names, loaded once the log folder is known.</summary>

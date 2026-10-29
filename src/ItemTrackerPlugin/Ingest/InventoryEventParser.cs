@@ -31,8 +31,9 @@ public static partial class InventoryEventParser
     /// <para>5 -> 6: a drop records the location it fell in.</para>
     /// <para>6 -> 7: ship lockers are named, and ships flown and retrieved are recorded.</para>
     /// <para>7 -> 8: freight totals, stack presses, inventory open/close and shop buys are recorded.</para>
+    /// <para>8 -> 9: an inventory open inside a station names the station, not the sub-location.</para>
     /// </summary>
-    public const int Version = 8;
+    public const int Version = 9;
 
     /// <summary>
     /// Move types that never change where an item is held: pure reads, and the
