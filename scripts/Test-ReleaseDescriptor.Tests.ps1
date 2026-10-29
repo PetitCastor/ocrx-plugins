@@ -118,11 +118,29 @@ Assert-Invalid 'preview with a malformed change' `
     -Tag 'v1.2.4-signature-alpha.1' `
     -Manifest @{ tag = 'v1.2.4-signature-alpha.1'; channel = 'preview'; changes = @('nope'); notes = 'n'; plugins = @('SignaturePlugin') }
 
-# One rule in Test-ReleaseDescriptorManifest has no test here: "a preview release must select
-# exactly one plugin". With a single-name $AllowedPlugins it cannot be reached — a repeated name
-# fails the duplicate check and a second distinct name fails the allowlist check, both before the
-# channel branch — so any assertion written for it would pass for the wrong reason. Restore a case
-# for it when a second plugin is allow-listed.
+# ItemTrackerPlugin ships on the preview channel under its own short name in the tag.
+Assert-Valid 'Item Tracker preview tag' `
+    -Tag 'v0.1.0-itemtracker-alpha.1' `
+    -Manifest @{ tag = 'v0.1.0-itemtracker-alpha.1'; channel = 'preview'; changes = @('Added: Item Tracker.'); notes = 'n'; plugins = @('ItemTrackerPlugin') }
+
+Assert-Invalid 'Item Tracker preview under the signature short name' `
+    -Tag 'v0.1.0-signature-alpha.1' `
+    -Manifest @{ tag = 'v0.1.0-signature-alpha.1'; channel = 'preview'; notes = 'n'; plugins = @('ItemTrackerPlugin') }
+
+Assert-Invalid 'SignaturePlugin preview under the itemtracker short name' `
+    -Tag 'v0.1.0-itemtracker-alpha.1' `
+    -Manifest @{ tag = 'v0.1.0-itemtracker-alpha.1'; channel = 'preview'; notes = 'n'; plugins = @('SignaturePlugin') }
+
+# A stable Item Tracker release would become releases/latest and break SignaturePlugin's update URL.
+Assert-Invalid 'Item Tracker on the stable channel' `
+    -Tag 'v2.8.0' `
+    -Manifest @{ tag = 'v2.8.0'; channel = 'stable'; changes = @('Added: Item Tracker.'); notes = 'n'; plugins = @('ItemTrackerPlugin') }
+
+# Two distinct allow-listed plugins pass the duplicate and allowlist checks, so this reaches the
+# preview rule itself: a preview tag names one plugin, so a preview ships exactly one.
+Assert-Invalid 'preview selecting two plugins' `
+    -Tag 'v0.1.0-itemtracker-alpha.1' `
+    -Manifest @{ tag = 'v0.1.0-itemtracker-alpha.1'; channel = 'preview'; notes = 'n'; plugins = @('ItemTrackerPlugin', 'SignaturePlugin') }
 
 # The frozen proofs of concept under src/ are outside the solution: nothing builds or tests them, so
 # a descriptor must never be able to ship one. This is the regression guard on $AllowedPlugins.

@@ -125,7 +125,7 @@ jobs:
           BASE_REF: origin/${{ github.base_ref }}
         run: |
           try {
-            $src = @(git diff --no-renames --name-only "$env:BASE_REF...HEAD" -- 'src/SignaturePlugin')
+            $src = @(git diff --no-renames --name-only "$env:BASE_REF...HEAD" -- 'src/SignaturePlugin' 'src/ItemTrackerPlugin')
             if ($LASTEXITCODE -ne 0) { throw "git diff against $env:BASE_REF failed." }
             $touched = @(git diff --no-renames --diff-filter=AM --name-only "$env:BASE_REF...HEAD" -- '.github/release-manifests/*.json')
             if ($LASTEXITCODE -ne 0) { throw "git diff against $env:BASE_REF failed." }
@@ -133,7 +133,7 @@ jobs:
             # publishes nothing.
             $descriptors = @($touched | Where-Object { $_ -and -not (git tag --list ([System.IO.Path]::GetFileNameWithoutExtension($_))) })
             if ($src -and -not $descriptors) {
-              Write-Host '::notice title=Unreleased plugin changes::This pull request changes src/SignaturePlugin without a release descriptor. The changes are not published when it merges; they ship with the next descriptor (see RELEASING.md).'
+              Write-Host '::notice title=Unreleased plugin changes::This pull request changes a releasable plugin under src/ without a release descriptor. The changes are not published when it merges; they ship with the next descriptor (see RELEASING.md).'
             }
           }
           catch {

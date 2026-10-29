@@ -7,11 +7,17 @@
 # Every entry here is also a `src/<name>` project directory by convention; release.yml relies on
 # that to build its publish path map without hand-duplicating this list.
 #
-# SignaturePlugin is the only releasable plugin. MissionPlugin and RefineryPlugin still exist under
-# src/ but are frozen proofs of concept outside OcrxPlugins.slnx — nothing builds or tests them, so
-# they must not be selectable by a release descriptor. Re-add a name here (and to $shortNames below)
-# only together with its solution and test entries.
-$script:AllowedPlugins = @('SignaturePlugin')
+# SignaturePlugin and ItemTrackerPlugin are the releasable plugins. MissionPlugin and RefineryPlugin
+# still exist under src/ but are frozen proofs of concept outside OcrxPlugins.slnx — nothing builds or
+# tests them, so they must not be selectable by a release descriptor. Add a name here (and to
+# $shortNames below) only together with its solution and test entries.
+$script:AllowedPlugins = @('SignaturePlugin', 'ItemTrackerPlugin')
+
+# Allow-listed but barred from the stable channel. A stable release becomes GitHub's repo-wide
+# `releases/latest`; one that carries no SignaturePlugin zip would 404 the
+# `releases/latest/download/SignaturePlugin-win-x64.zip` URL SignaturePlugin's update detection reads.
+# A plugin leaves this list only once every plugin has its own update URL (see RELEASING.md).
+$script:PreviewOnlyPlugins = @('ItemTrackerPlugin')
 
 function Get-LatestStableTag {
     # The highest vMAJOR.MINOR.PATCH among $Tags, or $null when there is none. Compared as versions, not
@@ -95,18 +101,16 @@ function Test-ReleaseDescriptorManifest {
 
     if ($Manifest.channel -eq 'stable') {
         if ($Tag -notmatch '^v\d+\.\d+\.\d+$') { throw 'Stable tags must be v<major>.<minor>.<patch>.' }
+        $previewOnly = @($plugins | Where-Object { $_ -in $script:PreviewOnlyPlugins })
+        if ($previewOnly.Count -gt 0) { throw "$($previewOnly -join ', ') may only ship on the preview channel (see RELEASING.md)." }
         if ($LatestStableTag) {
             Test-ReleaseDescriptorVersion -Tag $Tag -LatestStableTag $LatestStableTag -Kinds $kinds.ToArray()
         }
     }
     else {
-        # Unreachable while $AllowedPlugins holds a single name — two identical names die on the
-        # duplicate check above, any second distinct name on the allowlist check — so it is also
-        # untestable today (see Test-ReleaseDescriptor.Tests.ps1). Kept, not deleted: it is the rule
-        # that a preview ships one plugin, and it becomes live and testable again the moment a
-        # second plugin is allow-listed.
+        # A preview tag names the one plugin it ships, so a preview cannot bundle two.
         if ($plugins.Count -ne 1) { throw 'A preview release must select exactly one plugin.' }
-        $shortNames = @{ SignaturePlugin = 'signature' }
+        $shortNames = @{ SignaturePlugin = 'signature'; ItemTrackerPlugin = 'itemtracker' }
         $expected = '^v\d+\.\d+\.\d+-' + $shortNames[$plugins[0]] + '-(alpha|beta|rc)\.\d+$'
         if ($Tag -notmatch $expected) { throw "Preview tag '$Tag' must identify the selected plugin and stage." }
     }
