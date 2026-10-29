@@ -89,7 +89,7 @@ public sealed class ReplayParityTests
         var where = $"{frame.File} read {record.RawText}";
 
         Assert.True(want.Panel == got["panel"], $"panel: {where}");
-        Assert.True(want.Name == got["name"], $"name: {where}");
+        Assert.True(SameName(want.Name, got["name"]), $"name: {where}");
         Assert.True(want.ItemType == Field(got, "itemType"), $"itemType: {where}");
         Assert.True(want.Row == Int(got, "row"), $"row: {where}");
         Assert.True(want.Column == Int(got, "column"), $"column: {where}");
@@ -97,6 +97,12 @@ public sealed class ReplayParityTests
         Assert.True(want.Page == Int(got, "page"), $"page: {where}");
         Assert.True(want.Pages == Int(got, "pages"), $"pages: {where}");
     }
+
+    /// <summary>Windows OCR reads the roman numeral in "Odyssey II" as "II" or "11" depending on the
+    /// language pack build, so I, l and 1 are one letter here.</summary>
+    private static bool SameName(string? want, string? got) => Fold(want) == Fold(got);
+
+    private static string? Fold(string? name) => name?.Replace('l', '1').Replace('I', '1');
 
     private static string? Field(IReadOnlyDictionary<string, string> fields, string key) =>
         fields.TryGetValue(key, out var v) ? v : null;
