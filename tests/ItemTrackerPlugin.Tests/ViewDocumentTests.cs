@@ -181,6 +181,24 @@ public sealed class ViewDocumentTests : IDisposable
     }
 
     [Fact]
+    public void The_size_is_counted_the_way_the_sdk_writes_it_indented()
+    {
+        // About 0.9 MB compact, well over 1 MiB once indented: many small objects, which indentation inflates most.
+        JsonObject Build(int history) => new()
+        {
+            ["rows"] = new JsonArray(Enumerable.Range(0, 12_000 * (history + 1) / 9)
+                .Select(i => (JsonNode)new JsonObject { ["a"] = i, ["b"] = "xxxxxxxxxxxxxxxxxxxx", ["c"] = new JsonArray(1, 2, 3) }).ToArray()),
+        };
+
+        var compact = Build(ViewDocument.FullHistory).ToJsonString().Length;
+        var fitted = ViewPublisher.Fit(Build);
+
+        Assert.True(compact < PluginView.MaxDataBytes, "the fixture must be under the limit compact");
+        Assert.NotNull(fitted);
+        PluginView.WriteData(Path.Combine(_dir, "indented.json"), fitted);
+    }
+
+    [Fact]
     public void A_document_that_does_not_fit_even_without_history_has_no_fit()
     {
         var asked = new List<int>();

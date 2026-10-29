@@ -327,3 +327,14 @@ test("matching ignores case and extra spaces, and an empty query matches everyth
   assert.ok(!matches(first, "badger pistol"));
   assert.equal(visible(entries(data), { tab: "locations", state: "all", query: "" }).length, 5);
 });
+
+test("a stray message leaves the page as it was", () => {
+  const { root, view } = open();
+  const before = pageText(root);
+
+  view.receive("hello");
+  view.receive({ type: "something-else" });
+  view.receive({ unrelated: true });
+
+  assert.equal(pageText(root), before);
+});

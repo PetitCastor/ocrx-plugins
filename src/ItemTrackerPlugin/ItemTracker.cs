@@ -45,7 +45,15 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
     private int? _lastQuantity;
     private readonly InventoryStatus _status = new();
     private ViewPublisher? _view;
-    private (DateTimeOffset Built, StationStatus? Value)? _stationCache;
+    private (DateTimeOffset Built, string? Id, StationStatus? Value)? _stationCache;
+    private string? _openedId;
+    private DateTime _openedCheckedAt;
+    private DateTime _nextRebuild;
+
+    private static readonly TimeSpan OpenedLookupGap = TimeSpan.FromSeconds(1);
+
+    /// <summary>The fewest seconds between rebuilds asked for by what the screen showed.</summary>
+    private static readonly TimeSpan RebuildGap = TimeSpan.FromSeconds(3);
 
     /// <summary>Ticks in a row that must want the headers alone before an inventory screen's set is
     /// dropped, so one misread header does not cost two subscription round trips.</summary>
@@ -136,37 +144,44 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
     }
 
     /// <summary>
-    /// The station the log last said was opened, with its states from the latest snapshot. Looked up
-    /// again only when the snapshot is rebuilt: a tick comes many times a second, and the open-line
-    /// lookup is a store read.
+    /// The station the log last said was opened, with its states from the latest snapshot. A tick comes
+    /// many times a second, so the open-line lookup (a store read) runs at most once a second, and the
+    /// states are rebuilt only when that id or the snapshot changed.
     /// </summary>
     private StationStatus? CurrentStation(IPluginServices services)
     {
         if (StationSource is { } injected) return injected();
         if (_host is null) return null;
 
-        var snapshot = _host.State.Current;
-        if (_stationCache is { } cached && cached.Built == snapshot.BuiltAt) return cached.Value;
-
-        StationStatus? status = null;
-        try
+        var now = DateTime.UtcNow;
+        if (now - _openedCheckedAt >= OpenedLookupGap)
         {
-            if (ReconcileSources.LatestOpened(_host.Db) is { } id)
+            _openedCheckedAt = now;
+            try
             {
-                var reconciliation = snapshot.Reconciliation ?? Reconciliation.Empty;
-                status = new StationStatus(
-                    id,
-                    snapshot.Resolver?.Places.ByLocationId(id)?.Name ?? snapshot.Resolver?.PlaceLabel(id) ?? id,
-                    reconciliation.At(id),
-                    reconciliation.Pages.Where(p => p.LocationId == id).ToList());
+                _openedId = ReconcileSources.LatestOpened(_host.Db);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                services.Log($"ItemTrackerPlugin: could not find the open station: {ex.Message}");
             }
         }
-        catch (SqliteException ex)
+
+        var snapshot = _host.State.Current;
+        if (_stationCache is { } cached && cached.Built == snapshot.BuiltAt && cached.Id == _openedId) return cached.Value;
+
+        StationStatus? status = null;
+        if (_openedId is { } id)
         {
-            services.Log($"ItemTrackerPlugin: could not find the open station: {ex.Message}");
+            var reconciliation = snapshot.Reconciliation ?? Reconciliation.Empty;
+            status = new StationStatus(
+                id,
+                snapshot.Resolver?.Places.ByLocationId(id)?.Name ?? snapshot.Resolver?.PlaceLabel(id) ?? id,
+                reconciliation.At(id),
+                reconciliation.Pages.Where(p => p.LocationId == id).ToList());
         }
 
-        _stationCache = (snapshot.BuiltAt, status);
+        _stationCache = (snapshot.BuiltAt, _openedId, status);
         return status;
     }
 
@@ -204,11 +219,35 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
         try
         {
             ObservationStore.Add(_host.Db, observation, DateTimeOffset.UtcNow);
+            RequestRebuild(_host, ctx.Services);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             ctx.Services.Log($"ItemTrackerPlugin: could not store an observation: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// What the screen showed changes the states, but no log line follows it, so nothing else would
+    /// rebuild the snapshot the status line and the view read. A throttled rebuild off the tick thread; a
+    /// replay has no use for one.
+    /// </summary>
+    private void RequestRebuild(TrackerHost host, IPluginServices services)
+    {
+        if (services.Engine.ReplayMode || DateTime.UtcNow < _nextRebuild) return;
+
+        _nextRebuild = DateTime.UtcNow + RebuildGap;
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                host.State.Rebuild();
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                services.Log($"ItemTrackerPlugin: could not rebuild after a screen read: {ex.Message}");
+            }
+        });
     }
 
     /// <summary>The game's item names, loaded once the log folder is known.</summary>
@@ -247,8 +286,9 @@ public sealed class ItemTracker : IOcrxPlugin, IAsyncDisposable
         // The view's file is the real ledger's, so a replay leaves it alone, like the store itself.
         if (_view is null && !services.Engine.ReplayMode)
         {
-            _view = new ViewPublisher(_host.State, ViewPublisher.DefaultPath);
-            _view.Publish();
+            _view = new ViewPublisher(_host.State, ViewPublisher.DefaultPath, services.Log);
+            // The first rebuild writes the first real document; an empty one now would blank the last good view.
+            if (_host.State.Current.BuiltAt != DateTimeOffset.MinValue) _view.Publish();
         }
 
         await services.PublishSettingsAsync(BuildSpec(_host.Options), ct);

@@ -34,8 +34,11 @@ export function createView(root, doc) {
   return {
     ui,
     receive(message) {
-      data = message?.type === VIEW_DATA_MESSAGE ? message.data : message;
-      draw();
+      const next = message?.type === VIEW_DATA_MESSAGE ? message.data : message;
+      // Only the plugin's document, or its absence, replaces what is shown: a stray message must not blank the page.
+      if (next !== null && (typeof next !== "object" || next.schema === undefined)) return;
+      data = next;
+      drawKeepingSearch();
     },
     draw,
   };

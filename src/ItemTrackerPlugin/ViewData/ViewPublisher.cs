@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using ItemTrackerPlugin.App;
-using Microsoft.Extensions.Logging;
+using System.Text.Json;
 using Ocrx.Sdk;
 
 namespace ItemTrackerPlugin.ViewData;
@@ -16,14 +16,17 @@ internal sealed class ViewPublisher : IDisposable
     /// <summary>The engine looks the data up under the plugin's install folder, which is its catalog id.</summary>
     internal const string DataFolder = "item-tracker";
 
+    /// <summary>The SDK writes indented JSON and counts that, so the ladder measures the same.</summary>
+    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
+
     private static readonly int[] HistorySteps = [ViewDocument.FullHistory, 3, 0];
 
     private readonly TrackerState _state;
     private readonly string _path;
-    private readonly ILogger? _log;
+    private readonly Action<string>? _log;
     private readonly Lock _gate = new();
 
-    public ViewPublisher(TrackerState state, string path, ILogger? log = null)
+    public ViewPublisher(TrackerState state, string path, Action<string>? log = null)
     {
         _state = state;
         _path = path;
@@ -42,9 +45,9 @@ internal sealed class ViewPublisher : IDisposable
             {
                 WriteSmallestFit(_state.Current, _path);
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _log?.LogWarning(ex, "Could not publish the view data to {Path}", _path);
+                _log?.Invoke($"ItemTrackerPlugin: could not publish the view data: {ex.Message}");
             }
         }
     }
@@ -59,7 +62,7 @@ internal sealed class ViewPublisher : IDisposable
         foreach (var history in HistorySteps)
         {
             var document = build(history);
-            if (Encoding.UTF8.GetByteCount(document.ToJsonString()) <= PluginView.MaxDataBytes) return document;
+            if (Encoding.UTF8.GetByteCount(document.ToJsonString(Indented)) <= PluginView.MaxDataBytes) return document;
         }
 
         return null;

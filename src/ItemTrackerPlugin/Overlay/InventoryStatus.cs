@@ -19,6 +19,7 @@ internal sealed class InventoryStatus
     private string? _shown;
     private int _absentTicks;
     private DateTime _noticeUntil;
+    private int _noticePage;
 
     /// <summary>
     /// True when the overlay must change: <paramref name="line"/> is then the new text, or null to hide it.
@@ -30,9 +31,9 @@ internal sealed class InventoryStatus
         line = null;
         if (header.Context is not (ScreenContext.Kiosk or ScreenContext.ShipStorage))
         {
-            _announced.Clear();
             if (_shown is null || ++_absentTicks < ClearAfterTicks) return false;
 
+            _announced.Clear();
             _absentTicks = 0;
             _shown = null;
             return true;
@@ -52,10 +53,13 @@ internal sealed class InventoryStatus
 
         var head = $"{st.Label} kiosk";
         if (page is { } p && st.Pages.Any(s => s.Page == p.Page && s.Verified) && _announced.Add((st.LocationId, p.Page)))
+        {
             _noticeUntil = now + PageNoticeFor;
+            _noticePage = p.Page;
+        }
 
         // The notice outlives the tick that earned it, or the next tick's line would wipe it.
-        if (now < _noticeUntil && page is { } shown)
+        if (now < _noticeUntil && page is { } shown && shown.Page == _noticePage)
             return $"{head} · page {shown.Page} verified ✓";
 
         var line = head + PageOf(page) + $" · {st.Tally.Verified} ✓";

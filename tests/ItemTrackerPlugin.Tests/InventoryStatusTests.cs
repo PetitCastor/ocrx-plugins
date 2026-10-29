@@ -107,4 +107,28 @@ public sealed class InventoryStatusTests
         for (var i = 0; i < 3; i++) Line(status, ScreenHeader.Unknown, null, null, seconds: 12);
         Assert.Contains("verified", Line(status, Kiosk, page, verified, seconds: 20));
     }
+
+    [Fact]
+    public void The_notice_never_names_a_page_other_than_the_one_that_earned_it()
+    {
+        var status = new InventoryStatus();
+        var verified = Keeger(new StateTally(4, 0, 0, 0), new PageStatus("1", 2, 3, 3));
+
+        Assert.Equal("Keeger kiosk · page 2 verified ✓", Line(status, Kiosk, new PageCounter(2, 5), verified));
+        Assert.Equal("Keeger kiosk · p.3/5 · 4 ✓", Line(status, Kiosk, new PageCounter(3, 5), verified, seconds: 1));
+    }
+
+    [Fact]
+    public void One_misread_header_does_not_let_a_page_announce_itself_again()
+    {
+        var status = new InventoryStatus();
+        var page = new PageCounter(2, 5);
+        var verified = Keeger(new StateTally(4, 0, 0, 0), new PageStatus("1", 2, 3, 3));
+
+        Line(status, Kiosk, page, verified);
+        Line(status, Kiosk, page, verified, seconds: 10);
+        Line(status, ScreenHeader.Unknown, null, null, seconds: 11);
+
+        Assert.Null(Line(status, Kiosk, page, verified, seconds: 12));
+    }
 }
