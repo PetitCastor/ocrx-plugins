@@ -1,0 +1,11 @@
+{
+  "tag": "v0.1.0-itemtracker-alpha.3",
+  "channel": "preview",
+  "plugins": [
+    "ItemTrackerPlugin"
+  ],
+  "notes": "Item Tracker alpha preview, third build. Unsigned, opt-in, and may change incompatibly between previews. Works with OCRX engine v2.1.1 or later. Needs the Microsoft Edge WebView2 Runtime, which Windows 10 and 11 include. Built on Ocrx.Sdk 2.9.0.",
+  "changes": [
+    "Added: A \"Window theme\" setting gives the Item Tracker window light or dark colours, or follows the Windows app mode (the default). A change applies to the open window at once."
+  ]
+}
