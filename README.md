@@ -151,6 +151,20 @@ Run the repository test suite before submitting a change:
 dotnet test OcrxPlugins.slnx --filter "Category!=Integration"
 ```
 
+### 5. Give it an icon
+
+A plugin that shows a window or a tray icon of its own uses the OCRX mark with its own glyph in place
+of the O: keep the four corner brackets of the engine's `assets/icon.svg` unchanged (`#62f3dd`,
+stroke 3 on a 48 × 48 viewBox) and draw the plugin's glyph inside them as an outline in `#f7f4ed`,
+stroke 3, about 25 units across, with no background. Keep the SVG next to the `.ico` and generate
+the `.ico` from it with a frame for each size Windows asks for:
+
+```powershell
+magick -background none -density 1200 MyPlugin.svg -define icon:auto-resize=16,20,24,32,40,48,64,256 MyPlugin.ico
+```
+
+[`ItemTracker.svg`](src/ItemTrackerPlugin/Window/ItemTracker.svg) is the reference.
+
 ## References
 
 - [SignaturePlugin](src/SignaturePlugin/README.md) — the current official plugin.
