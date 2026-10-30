@@ -25,7 +25,7 @@ internal sealed class TrackerWindow : IDisposable
     private Control? _ui;
     private ViewForm? _form;
     private NotifyIcon? _tray;
-    private Icon? _icon;
+    private Icon? _windowIcon;
     private string? _latest;
     private WindowTheme _theme;
 
@@ -70,7 +70,8 @@ internal sealed class TrackerWindow : IDisposable
     private void Run()
     {
         Control ui;
-        Icon icon;
+        Icon trayIcon;
+        Icon windowIcon;
         NotifyIcon tray;
         try
         {
@@ -89,10 +90,13 @@ internal sealed class TrackerWindow : IDisposable
             ui = new Control();
             _ = ui.Handle;
 
-            icon = LoadIcon();
+            // The tray gets the small size, the window every size: Windows picks the title bar's and
+            // the taskbar's from it. Handing the window the 16 px tray icon had both blown up and blurry.
+            trayIcon = LoadIcon(SystemInformation.SmallIconSize);
+            windowIcon = LoadIcon(size: null);
             var menu = new ContextMenuStrip();
             menu.Items.Add("Open", null, (_, _) => OpenForm());
-            tray = new NotifyIcon { Icon = icon, Text = "Item Tracker", ContextMenuStrip = menu, Visible = true };
+            tray = new NotifyIcon { Icon = trayIcon, Text = "Item Tracker", ContextMenuStrip = menu, Visible = true };
             tray.MouseClick += (_, e) =>
             {
                 if (e.Button == MouseButtons.Left) OpenForm();
@@ -107,14 +111,15 @@ internal sealed class TrackerWindow : IDisposable
             return;
         }
 
-        (_ui, _icon, _tray) = (ui, icon, tray);
+        (_ui, _windowIcon, _tray) = (ui, windowIcon, tray);
         _ready.TrySetResult();
         Application.Run();
 
         _form?.Dispose();
         tray.Visible = false;
         tray.Dispose();
-        icon.Dispose();
+        trayIcon.Dispose();
+        windowIcon.Dispose();
         ui.Dispose();
     }
 
@@ -122,7 +127,7 @@ internal sealed class TrackerWindow : IDisposable
     {
         if (_form is null || _form.IsDisposed)
         {
-            _form = new ViewForm(_viewDir, _userDataDir, _icon!, _theme, _log);
+            _form = new ViewForm(_viewDir, _userDataDir, _windowIcon!, _theme, _log);
             _form.HiddenByUser += OnHidden;
             if (_latest is { } message) _form.Post(message);
         }
@@ -152,11 +157,12 @@ internal sealed class TrackerWindow : IDisposable
         }
     }
 
-    private static Icon LoadIcon()
+    /// <summary>The icon at one size, or with every size it ships when <paramref name="size"/> is null.</summary>
+    internal static Icon LoadIcon(Size? size)
     {
         using var stream = typeof(TrackerWindow).Assembly.GetManifestResourceStream(IconResource)
             ?? throw new InvalidOperationException($"The icon resource {IconResource} is missing.");
-        return new Icon(stream, SystemInformation.SmallIconSize);
+        return size is { } s ? new Icon(stream, s) : new Icon(stream);
     }
 
     public void Dispose()
