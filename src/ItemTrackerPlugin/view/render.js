@@ -1,12 +1,10 @@
 // Builds the Item Tracker view into a DOM. Everything the document says reaches the page through
 // textContent, never as markup, because item names come off the screen and out of the game's files.
 // The view only looks: there is no control that changes the ledger, and no way for the page to send
-// anything back. The only inputs are the tab, the place picked in the list of places, the state filter
-// and the search box, which choose and filter what is shown.
+// anything back. The only inputs are the tab, the system and place pickers, and the search box, which
+// choose and filter what is shown.
 
-import {
-  STATES, TABS, byPlace, choosePlace, entries, filtering, formatTime, placeTree, stateHelp, stateLabel, tally, visible,
-} from "./model.js";
+import { TABS, byPlace, choosePlace, entries, filtering, formatTime, placeTree, stateHelp, stateLabel, visible } from "./model.js";
 
 const SHIPS_NOTE =
   "The logs cannot tell two ships of the same model apart, so storage is grouped by model.";
@@ -26,25 +24,18 @@ function stateBadge(doc, state) {
   return badge;
 }
 
-function tallyLine(doc, counts) {
-  const line = el(doc, "span", "tally");
-  for (const state of STATES) {
-    if (counts[state]) line.append(el(doc, "span", `tally-${state}`, `${counts[state]} ${stateLabel(state)}`));
-  }
-  return line;
-}
-
 /**
  * @param {Element} root where to build; its children are replaced
  * @param {object} options
  * @param {Document} options.doc the document to create nodes with
  * @param {object|null} options.data the plugin's document, or null before the first one arrives
- * @param {{tab: string, state: string, query: string, selected: string|null, place: string|null, collapsed: Set<string>}} options.ui
- * @param {{tab: Function, state: Function, query: Function, select: Function, place: Function, toggle: Function}} options.on
+ * @param {{tab: string, query: string, selected: string|null, place: string|null}} options.ui
+ * @param {{tab: Function, query: Function, select: Function, place: Function}} options.on
  */
 export function renderView(root, { doc, data, ui, on }) {
   const shell = el(doc, "div", "shell");
-  shell.append(header(doc, data, ui, on));
+  const head = header(doc, ui, on);
+  shell.append(head);
 
   if (!data) {
     shell.append(el(doc, "p", "empty", "Waiting for the tracker's first read of your logs."));
@@ -55,20 +46,18 @@ export function renderView(root, { doc, data, ui, on }) {
   const all = entries(data);
   let list = visible(all, ui);
 
-  const body = el(doc, "div", "body");
   if (ui.tab === "locations") {
-    // One station at a time, picked from the list of places beside it: every station in one long page
-    // stops being readable as soon as the player stores things in more than one system.
-    const isFiltering = filtering(ui);
-    const systems = placeTree(data, list, isFiltering);
+    // One station at a time, picked by system then place above the list, as inventory-tracker did:
+    // every station in one long page stops being readable once things are stored in several places.
+    const systems = placeTree(data, list, filtering(ui));
     const shown = choosePlace(systems, ui.place, data.here);
     list = list.filter((e) => e.placeId === shown);
-    if (systems.length) {
-      body.className = "body body-tree";
-      body.append(placesNav(doc, systems, shown, data.here, isFiltering, ui, on));
-    }
+    if (systems.length) head.append(pickers(doc, systems, shown, data.here, on));
   }
-  // An item a filter, or a jump to another place, took off the list keeps no detail open beside it.
+
+  // The header stays put; only the list (and the detail beside it) scrolls.
+  const body = el(doc, "div", "body");
+  // An item the search, or a jump to another place, took off the list keeps no detail open beside it.
   const selected = list.find((e) => e.id === ui.selected);
   body.append(listPane(doc, data, all, list, ui, on));
   if (selected) body.append(detailPane(doc, selected, on));
@@ -76,19 +65,9 @@ export function renderView(root, { doc, data, ui, on }) {
   root.replaceChildren(shell);
 }
 
-function header(doc, data, ui, on) {
+function header(doc, ui, on) {
   const head = el(doc, "header", "head");
   head.append(el(doc, "h1", "title", "Item Tracker"));
-
-  if (data) {
-    const summary = el(doc, "div", "summary");
-    for (const state of STATES) {
-      const pill = el(doc, "span", `pill pill-${state}`, `${data.counts?.[state] ?? 0} ${stateLabel(state)}`);
-      pill.setAttribute("title", stateHelp(state));
-      summary.append(pill);
-    }
-    head.append(summary);
-  }
 
   const tabs = el(doc, "nav", "tabs");
   for (const tab of TABS) {
@@ -99,25 +78,49 @@ function header(doc, data, ui, on) {
   }
   head.append(tabs);
 
-  const filters = el(doc, "div", "filters");
   const search = el(doc, "input", "search");
   search.setAttribute("type", "search");
   search.setAttribute("placeholder", "Search items, stations, reasons");
   search.setAttribute("aria-label", "Search");
   search.value = ui.query;
   search.oninput = () => on.query(search.value);
-  filters.append(search);
-
-  const states = el(doc, "div", "state-filter");
-  for (const state of ["all", ...STATES]) {
-    const button = el(doc, "button", state === ui.state ? "chip chip-on" : "chip", state === "all" ? "All" : stateLabel(state));
-    button.setAttribute("type", "button");
-    button.onclick = () => on.state(state);
-    states.append(button);
-  }
-  filters.append(states);
-  head.append(filters);
+  head.append(search);
   return head;
+}
+
+/**
+ * System, then place: two dropdowns over the list. Changing system opens the place there the player
+ * stands at, else the one something last happened at. A search keeps only the places with a match.
+ */
+function pickers(doc, systems, shown, here, on) {
+  const row = el(doc, "div", "pickers");
+  const current = systems.find((s) => s.places.some((p) => p.id === shown)) ?? systems[0];
+
+  const system = el(doc, "select", "picker picker-system");
+  system.setAttribute("aria-label", "System");
+  for (const s of systems) {
+    const option = el(doc, "option", "", s.name);
+    option.value = s.name;
+    system.append(option);
+  }
+  system.value = current.name;
+  system.onchange = () => {
+    const picked = systems.find((s) => s.name === system.value);
+    if (picked) on.place(choosePlace([picked], null, here));
+  };
+
+  const place = el(doc, "select", "picker picker-place");
+  place.setAttribute("aria-label", "Place");
+  for (const p of current.places) {
+    const option = el(doc, "option", "", `${p.name} (${p.count})${p.id === here ? " · you are here" : ""}`);
+    option.value = p.id;
+    place.append(option);
+  }
+  place.value = shown;
+  place.onchange = () => on.place(place.value);
+
+  row.append(system, place);
+  return row;
 }
 
 function listPane(doc, data, all, list, ui, on) {
@@ -127,67 +130,40 @@ function listPane(doc, data, all, list, ui, on) {
 
   if (list.length === 0) {
     const inTab = all.filter((e) => e.tab === ui.tab).length;
-    pane.append(el(doc, "p", "empty", inTab === 0 ? emptyTab(ui.tab) : "Nothing matches this filter."));
+    pane.append(el(doc, "p", "empty", inTab === 0 ? emptyTab(ui.tab) : "Nothing matches this search."));
     return pane;
   }
 
   const stations = new Map((data.systems ?? []).flatMap((s) => s.stations ?? []).map((s) => [s.id, s]));
   for (const place of byPlace(list)) {
-    if (ui.tab === "locations") pane.append(el(doc, "h2", "system", place.group));
     pane.append(placeBlock(doc, place, ui.tab === "locations" ? stations.get(place.placeId) : null, ui, on));
   }
   return pane;
 }
 
-/**
- * The places the Locations tab can show, by system. A system's heading folds its places away, all but
- * the one on show; with a single system there is nothing to tell apart, so the places are listed bare.
- * A filter unfolds everything, or a match could sit out of reach in a folded system.
- */
-function placesNav(doc, systems, shown, here, isFiltering, ui, on) {
-  const nav = el(doc, "nav", "places");
-  nav.setAttribute("aria-label", "Places");
-  const titled = systems.length > 1;
+function placeBlock(doc, place, station, ui, on) {
+  const block = el(doc, "section", "place");
+  // A station is already named by the place picker; ships and drops are named here.
+  if (!station) block.append(el(doc, "h3", "place-name", place.placeName));
+  // A station the game's text has not named yet is shown by its id, which is all there is to go by.
+  if (station && !station.resolved) block.append(el(doc, "p", "place-id", `Not named by the game yet: id ${place.placeId}`));
+  if (station?.coverage) block.append(el(doc, "p", "coverage", coverageText(station.coverage)));
 
-  for (const system of systems) {
-    const folded = titled && !isFiltering && ui.collapsed.has(system.name);
-    if (titled) {
-      const toggle = el(doc, "button", "system-toggle", system.name);
-      toggle.setAttribute("type", "button");
-      toggle.setAttribute("aria-expanded", String(!folded));
-      toggle.onclick = () => on.toggle(system.name);
-      nav.append(toggle);
-    }
-    const listed = folded ? system.places.filter((p) => p.id === shown) : system.places;
-    if (listed.length === 0) continue;
+  const rows = el(doc, "ul", "items");
+  for (const entry of place.entries) rows.append(itemRow(doc, entry, ui, on));
+  block.append(rows);
+  return block;
+}
 
-    const places = el(doc, "ul", "place-list");
-    for (const place of listed) {
-      const item = el(doc, "li", place.id === shown ? "place-entry place-on" : "place-entry");
-      const button = el(doc, "button", "place-button");
-      button.setAttribute("type", "button");
-      if (place.id === shown) button.setAttribute("aria-current", "true");
-      button.onclick = () => on.place(place.id);
-
-      const label = el(doc, "span", "place-label", place.name);
-      button.append(label);
-      if (place.id === here) {
-        const marker = el(doc, "span", "here", "here");
-        marker.setAttribute("title", "Where the logs last placed you");
-        button.append(marker);
-      }
-      if (place.attention) {
-        const dot = el(doc, "span", `dot dot-${place.attention}`);
-        dot.setAttribute("title", stateLabel(place.attention));
-        button.append(dot);
-      }
-      button.append(el(doc, "span", "place-count", place.count));
-      item.append(button);
-      places.append(item);
-    }
-    nav.append(places);
-  }
-  return nav;
+function itemRow(doc, entry, ui, on) {
+  const { item } = entry;
+  const row = el(doc, "li", entry.id === ui.selected ? "item item-on" : "item");
+  const button = el(doc, "button", "item-button");
+  button.setAttribute("type", "button");
+  button.onclick = () => on.select(entry.id === ui.selected ? null : entry.id);
+  button.append(el(doc, "span", "item-name", item.name), el(doc, "span", "item-qty", item.quantity > 1 ? `×${item.quantity}` : ""));
+  row.append(button);
+  return row;
 }
 
 function emptyTab(tab) {
@@ -198,41 +174,10 @@ function emptyTab(tab) {
   }
 }
 
-function placeBlock(doc, place, station, ui, on) {
-  const block = el(doc, "section", "place");
-  const title = el(doc, "h3", "place-name");
-  title.append(el(doc, "span", "", place.placeName));
-  // A station the game's text has not named yet is shown by its id, which is all there is to go by.
-  if (station && !station.resolved) title.append(el(doc, "span", "place-id", ` id ${place.placeId}`));
-  block.append(title, tallyLine(doc, tally(place.entries)));
-
-  if (station?.coverage) block.append(el(doc, "p", "coverage", coverageText(station.coverage)));
-
-  const rows = el(doc, "ul", "items");
-  for (const entry of place.entries) rows.append(itemRow(doc, entry, ui, on));
-  block.append(rows);
-  return block;
-}
-
 function coverageText(c) {
   const seen = `Last visit ${formatTime(c.at)}: ${c.pagesSeen}/${c.pages || "?"} pages, ${c.observedItems} items on screen`;
   if (c.complete) return `${seen}; matches the log's total of ${c.freightTotal}.`;
   return c.freightTotal == null ? `${seen}.` : `${seen}; the log's total is ${c.freightTotal}.`;
-}
-
-function itemRow(doc, entry, ui, on) {
-  const { item } = entry;
-  const row = el(doc, "li", entry.id === ui.selected ? "item item-on" : "item");
-  const button = el(doc, "button", "item-button");
-  button.setAttribute("type", "button");
-  button.onclick = () => on.select(entry.id === ui.selected ? null : entry.id);
-  button.append(
-    el(doc, "span", "item-name", item.name),
-    el(doc, "span", "item-qty", item.quantity > 1 ? `×${item.quantity}` : ""),
-    stateBadge(doc, item.state),
-  );
-  row.append(button);
-  return row;
 }
 
 function detailPane(doc, entry, on) {

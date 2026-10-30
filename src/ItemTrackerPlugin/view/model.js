@@ -77,11 +77,9 @@ export function matches(entry, query) {
   return words.every((w) => haystack.includes(w));
 }
 
-/** The entries of one tab that pass the state filter and the search. */
+/** The entries of one tab that pass the search. */
 export function visible(all, ui) {
-  return all.filter(
-    (e) => e.tab === ui.tab && (ui.state === "all" || e.item.state === ui.state) && matches(e, ui.query),
-  );
+  return all.filter((e) => e.tab === ui.tab && matches(e, ui.query));
 }
 
 /** Entries grouped by place, in the order they first appear. */
@@ -94,18 +92,14 @@ export function byPlace(list) {
   return [...groups.values()];
 }
 
-/** True when the state filter or the search narrows what is shown. */
+/** True when the search narrows what is shown. */
 export function filtering(ui) {
-  return ui.state !== "all" || (ui.query ?? "").trim() !== "";
+  return (ui.query ?? "").trim() !== "";
 }
 
-// Worst first: the dot a place carries in the list says the most urgent thing about it.
-const ATTENTION = ["conflict", "stale"];
-
 /**
- * The places of the Locations tab, by system, as the list beside the items shows them. Unfiltered, every
- * station is listed with its units; filtered, only the stations with a match are, each with the units
- * that matched. `attention` is the worst state among what the place lists, when it needs a look.
+ * The places of the Locations tab, by system, as the pickers offer them. Unfiltered, every station is
+ * listed with its units; searching, only the stations with a match are, each with the units that matched.
  */
 export function placeTree(data, list, isFiltering) {
   const matched = new Map();
@@ -128,7 +122,6 @@ export function placeTree(data, list, isFiltering) {
         system: system.name,
         lastActivity: station.lastActivity ?? null,
         count: STATES.reduce((n, s) => n + (counts[s] ?? 0), 0),
-        attention: ATTENTION.find((s) => counts[s] > 0) ?? null,
       });
     }
     if (places.length) systems.push({ name: system.name, places });

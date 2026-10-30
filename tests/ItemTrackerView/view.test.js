@@ -32,9 +32,25 @@ class FakeNode {
   setAttribute(name, value) {
     this.attributes[name] = String(value);
   }
+
+  get classList() {
+    return { contains: (c) => this.className.split(" ").includes(c) };
+  }
+
+  querySelector(selector) {
+    return all(this).find((n) => n !== this && n.classList.contains(selector.replace(/^\./, ""))) ?? null;
+  }
+
+  focus() {
+    fakeDoc.activeElement = this;
+  }
+
+  setSelectionRange(start) {
+    this.selectionStart = start;
+  }
 }
 
-const fakeDoc = { createElement: (tag) => new FakeNode(tag) };
+const fakeDoc = { createElement: (tag) => new FakeNode(tag), activeElement: null };
 
 function all(node) {
   return [node, ...node.children.flatMap(all)];
@@ -71,68 +87,315 @@ function byClass(root, className) {
   return all(root).filter((n) => n.className === className).map((n) => n.textContent);
 }
 
-function placeButton(root, name) {
-  const button = all(root).find(
-    (n) => n.className === "place-button" && n.children.some((c) => c.className === "place-label" && c.textContent === name),
-  );
-  assert.ok(button, `no place "${name}"`);
-  return button;
+function picker(root, label) {
+  const select = all(root).find((n) => n.tag === "select" && n.attributes["aria-label"] === label);
+  assert.ok(select, `no ${label} picker`);
+  return select;
 }
 
-function pickPlace(root, name) {
-  placeButton(root, name).onclick();
+function options(root, label) {
+  return picker(root, label).children.map((o) => o.textContent);
 }
 
-function shownPlace(root) {
-  const titles = all(root).filter((n) => n.className === "place-name");
-  assert.equal(titles.length, 1, "one station at a time");
-  return texts(titles[0]).join("");
+/** The text of the option a picker has selected. */
+function chosen(root, label) {
+  const select = picker(root, label);
+  return select.children.find((o) => o.value === select.value)?.textContent;
+}
+
+/** Chooses the option whose text starts with `text`, as a user picking it from the dropdown. */
+function choose(root, label, text) {
+  const select = picker(root, label);
+  const option = select.children.find((o) => o.textContent.startsWith(text));
+  assert.ok(option, `no ${label} option "${text}"`);
+  select.value = option.value;
+  select.onchange();
 }
 
 function itemNames(root) {
   return all(root).filter((n) => n.className === "item-name").map((n) => n.textContent);
 }
 
-test("every state is rendered with its label", () => {
-  const { root } = open();
-  const page = pageText(root);
-  for (const label of ["✓ Verified", "Deduced", "Stale", "⚠ Conflict"]) assert.ok(page.includes(label), label);
-
-  const badges = all(root).filter((n) => n.className.startsWith("badge "));
-  pickPlace(root, "location 999000111");
-  badges.push(...all(root).filter((n) => n.className.startsWith("badge ")));
-  assert.deepEqual(
-    new Set(badges.map((b) => b.className)),
-    new Set(["badge badge-verified", "badge badge-deduced", "badge badge-stale", "badge badge-conflict"]),
+function openItem(root, name) {
+  const button = all(root).find(
+    (n) => n.className === "item-button" && n.children.some((c) => c.className === "item-name" && c.textContent === name),
   );
-});
+  assert.ok(button, `no item "${name}"`);
+  button.onclick();
+}
 
-test("the header sums each state from the document", () => {
+function detail(root) {
+  const pane = all(root).find((n) => n.tag === "aside");
+  assert.ok(pane, "no detail pane");
+  return pane;
+}
+
+function memoryOf(kept = null) {
+  const memory = { kept, load: () => memory.kept, save: (next) => { memory.kept = structuredClone(next); } };
+  return memory;
+}
+
+const KEEGER = "Keeger — Nyx Social (5) · you are here";
+
+test("an item's state shows in its detail, with its label, and nowhere in the list", () => {
   const { root } = open();
-  const pills = all(root).filter((n) => n.className.startsWith("pill "));
+  assert.equal(all(root).filter((n) => n.className.startsWith("badge ")).length, 0);
 
-  assert.deepEqual(pills.map((p) => p.textContent), ["4 ✓ Verified", "3 Deduced", "1 Stale", "2 ⚠ Conflict"]);
+  const seen = new Map();
+  const note = () => {
+    const badge = all(detail(root)).find((n) => n.className.startsWith("badge "));
+    seen.set(badge.className, badge.textContent);
+  };
+  for (const name of ["CF-227 Badger Repeater", "CRUZ Dark", "Aztalan Arms"]) {
+    openItem(root, name);
+    note();
+  }
+  choose(root, "System", "Unknown system");
+  openItem(root, "Paint <b>Star</b> Runner");
+  note();
+
+  assert.deepEqual(Object.fromEntries(seen), {
+    "badge badge-verified": "✓ Verified",
+    "badge badge-conflict": "⚠ Conflict",
+    "badge badge-deduced": "Deduced",
+    "badge badge-stale": "Stale",
+  });
 });
 
-test("locations list the places by system and show one station with its items and quantity", () => {
+test("the header carries no state counts and no state filter", () => {
+  const { root } = open();
+  const classes = all(root).map((n) => n.className);
+
+  assert.ok(!classes.some((c) => /\b(pill|chip|tally|summary|state-filter)\b/.test(c)), classes.join(" "));
+  assert.ok(!all(root).some((n) => n.tag === "button" && n.textContent === "All"));
+});
+
+test("locations pick a system, then a place, and show that one station's items", () => {
   const { root } = open();
   const page = pageText(root);
 
-  assert.deepEqual(byClass(root, "system-toggle"), ["Nyx", "Unknown system"]);
-  assert.deepEqual(byClass(root, "place-label"), ["Keeger — Nyx Social", "Levski", "location 999000111"]);
-  assert.deepEqual(byClass(root, "system"), ["Nyx"]);
-  assert.equal(shownPlace(root), "Keeger — Nyx Social");
+  assert.deepEqual(options(root, "System"), ["Nyx", "Unknown system"]);
+  assert.equal(chosen(root, "System"), "Nyx");
+  assert.deepEqual(options(root, "Place"), [KEEGER, "Levski (1)"]);
+  assert.equal(chosen(root, "Place"), KEEGER);
+  assert.deepEqual(itemNames(root), ["CF-227 Badger Repeater", "CRUZ Dark", "Aztalan Arms", "M4A Cannon Defense Division"]);
   assert.ok(page.includes("×5"));
   assert.ok(page.includes("Last visit 2026-10-28 19:28 UTC: 3/5 pages, 17 items on screen; the log's total is 40."));
 });
 
-test("a station the game has not named yet shows its id", () => {
+test("changing system opens a place there", () => {
   const { root } = open();
-  pickPlace(root, "location 999000111");
-  const names = all(root).filter((n) => n.className === "place-name").map((n) => texts(n).join(""));
+  choose(root, "System", "Unknown system");
 
-  assert.ok(names.some((t) => t.includes("location 999000111") && t.includes("id 999000111")), names.join(" | "));
-  assert.ok(!names.find((t) => t.includes("Keeger"))?.includes(" id "));
+  assert.deepEqual(options(root, "Place"), ["location 999000111 (1)"]);
+  assert.deepEqual(itemNames(root), ["Paint <b>Star</b> Runner"]);
+
+  choose(root, "System", "Nyx");
+  assert.equal(chosen(root, "Place"), KEEGER);
+});
+
+test("a station the game has not named yet says so, with its id", () => {
+  const { root } = open();
+  choose(root, "System", "Unknown system");
+
+  assert.ok(pageText(root).includes("Not named by the game yet: id 999000111"));
+  choose(root, "System", "Nyx");
+  assert.ok(!pageText(root).includes("Not named by the game yet"));
+});
+
+test("picking a place shows its items alone and closes the open item", () => {
+  const { root } = open();
+  openItem(root, "CRUZ Dark");
+
+  choose(root, "Place", "Levski");
+
+  assert.equal(chosen(root, "Place"), "Levski (1)");
+  assert.deepEqual(itemNames(root), ["Pembroke Helmet"]);
+  assert.equal(all(root).filter((n) => n.tag === "aside").length, 0);
+});
+
+test("ships and drops have no place pickers", () => {
+  const { root } = open();
+  click(root, "Ships");
+  assert.equal(all(root).filter((n) => n.tag === "select").length, 0);
+  click(root, "Dropped");
+  assert.equal(all(root).filter((n) => n.tag === "select").length, 0);
+});
+
+test("search matches the name, the station and the reason, every word", () => {
+  const { root } = open();
+
+  type(root, "badger");
+  assert.deepEqual(itemNames(root), ["CF-227 Badger Repeater"]);
+
+  type(root, "keeger kiosk origin unknown");
+  assert.deepEqual(itemNames(root), ["M4A Cannon Defense Division"]);
+
+  type(root, "999000111");
+  assert.deepEqual(itemNames(root), ["Paint <b>Star</b> Runner"]);
+
+  type(root, "BADGER repeater");
+  assert.equal(itemNames(root).length, 1);
+});
+
+test("a search keeps only the places with a match, each with the units that matched", () => {
+  const { root } = open();
+
+  type(root, "helmet");
+  assert.deepEqual(options(root, "System"), ["Nyx"]);
+  assert.deepEqual(options(root, "Place"), ["Levski (1)"]);
+  assert.deepEqual(itemNames(root), ["Pembroke Helmet"]);
+
+  type(root, "cruz");
+  assert.deepEqual(options(root, "Place"), [KEEGER]);
+});
+
+test("the picked place comes back once the search that hid it is cleared", () => {
+  const { root } = open();
+  choose(root, "Place", "Levski");
+
+  type(root, "cruz");
+  assert.equal(chosen(root, "Place"), KEEGER);
+
+  type(root, "");
+  assert.equal(chosen(root, "Place"), "Levski (1)");
+});
+
+test("an open item a search moves off the list closes its detail", () => {
+  const { root } = open();
+  openItem(root, "CRUZ Dark");
+
+  type(root, "helmet");
+  assert.equal(all(root).filter((n) => n.tag === "aside").length, 0);
+});
+
+test("a search that matches nothing says so", () => {
+  const { root } = open();
+  type(root, "no such thing");
+
+  assert.ok(pageText(root).includes("Nothing matches this search."));
+  assert.deepEqual(itemNames(root), []);
+});
+
+test("before the first document it says it is waiting", () => {
+  const root = new FakeNode("div");
+  const view = createView(root, fakeDoc);
+  view.draw();
+
+  assert.ok(pageText(root).includes("Waiting for the tracker's first read of your logs."));
+  assert.equal(all(root).filter((n) => n.tag === "select").length, 0);
+});
+
+test("a name that looks like markup is shown as text and builds no element", () => {
+  const { root } = open();
+  const hostile = "Paint <b>Star</b> Runner";
+  choose(root, "System", "Unknown system");
+
+  assert.ok(itemNames(root).includes(hostile));
+  assert.equal(all(root).filter((n) => n.tag === "b").length, 0);
+});
+
+test("nothing on the page can change the ledger: no edit control, only search and navigation", () => {
+  const { root } = open();
+  openItem(root, "CRUZ Dark");
+
+  const tags = new Set(all(root).map((n) => n.tag));
+  for (const forbidden of ["textarea", "form", "a", "iframe", "script"]) assert.ok(!tags.has(forbidden), forbidden);
+
+  const inputs = all(root).filter((n) => n.tag === "input");
+  assert.equal(inputs.length, 1);
+  assert.equal(inputs[0].attributes.type, "search");
+  assert.deepEqual(all(root).filter((n) => n.tag === "select").map((n) => n.attributes["aria-label"]), ["System", "Place"]);
+
+  const labels = all(root).filter((n) => n.tag === "button" && n.className !== "item-button").map((n) => n.textContent);
+  assert.deepEqual(labels, ["Locations", "Ships", "Dropped", "Close"]);
+  const everyButton = all(root).filter((n) => n.tag === "button").map((n) => texts(n).join(" "));
+  for (const word of ["Edit", "Rename", "Adjust", "Delete", "Save", "Add", "Confirm", "Correct"]) {
+    assert.ok(!everyButton.some((l) => l.includes(word)), word);
+  }
+});
+
+test("the view opens on where the player stands and says so", () => {
+  const { root } = open();
+
+  assert.equal(chosen(root, "Place"), KEEGER);
+  assert.equal(options(root, "Place").filter((o) => o.includes("you are here")).length, 1);
+});
+
+test("with no position, the view opens on the place something last happened at", () => {
+  const elsewhere = structuredClone(data);
+  elsewhere.here = "somewhere-in-space";
+  elsewhere.systems[0].stations[1].lastActivity = "2026-10-29T08:00:00Z";
+  const { root } = open(elsewhere);
+
+  assert.equal(chosen(root, "Place"), "Levski (1)");
+  assert.ok(!options(root, "Place").some((o) => o.includes("you are here")));
+});
+
+test("the dropdown in use keeps the focus through the redraw it causes, and a new document", () => {
+  const { root, view } = open();
+  picker(root, "Place").focus();
+
+  choose(root, "Place", "Levski");
+  assert.equal(fakeDoc.activeElement, picker(root, "Place"));
+
+  view.receive(structuredClone(data));
+  assert.equal(fakeDoc.activeElement, picker(root, "Place"));
+
+  picker(root, "System").focus();
+  choose(root, "System", "Unknown system");
+  assert.equal(fakeDoc.activeElement, picker(root, "System"));
+  fakeDoc.activeElement = null;
+});
+
+test("a new document leaves the focus alone when nothing on the page had it", () => {
+  fakeDoc.activeElement = null;
+  const { view } = open();
+  view.receive(structuredClone(data));
+
+  assert.equal(fakeDoc.activeElement, null);
+});
+
+test("changing to the system the player is in opens where the player stands, not the newest place", () => {
+  const busy = structuredClone(data);
+  busy.systems[0].stations[1].lastActivity = "2026-10-29T08:00:00Z";
+  const { root } = open(busy);
+  choose(root, "System", "Unknown system");
+
+  choose(root, "System", "Nyx");
+  assert.equal(chosen(root, "Place"), KEEGER);
+});
+
+test("a single system still has its System dropdown, with that one system", () => {
+  const nyxOnly = structuredClone(data);
+  nyxOnly.systems = nyxOnly.systems.slice(0, 1);
+  const { root } = open(nyxOnly);
+
+  assert.deepEqual(options(root, "System"), ["Nyx"]);
+  assert.deepEqual(options(root, "Place"), [KEEGER, "Levski (1)"]);
+});
+
+test("kept state from the earlier place list (folded systems) is ignored", () => {
+  const memory = memoryOf({ place: "141810852", collapsed: ["Nyx"] });
+  const { root } = open(data, memory);
+
+  assert.equal(chosen(root, "Place"), "Levski (1)");
+  choose(root, "Place", "Keeger");
+  assert.deepEqual(memory.kept, { place: "3058615591" });
+});
+
+test("the picked place is kept for the next opening", () => {
+  const memory = memoryOf();
+  choose(open(data, memory).root, "Place", "Levski");
+
+  assert.deepEqual(memory.kept, { place: "141810852" });
+  assert.equal(chosen(open(data, memory).root, "Place"), "Levski (1)");
+});
+
+test("a kept place that is gone, or kept state that is not the view's, falls back to where the player is", () => {
+  for (const kept of [{ place: "gone" }, { place: 42 }, "garbage", 5, []]) {
+    assert.equal(chosen(open(data, memoryOf(kept)).root, "Place"), KEEGER, JSON.stringify(kept));
+  }
 });
 
 test("ships say the logs cannot tell two of a model apart", () => {
@@ -152,60 +415,6 @@ test("dropped items are listed as search leads", () => {
   assert.ok(pageText(root).includes("search leads"));
 });
 
-test("the state filter keeps one state and All brings the rest back", () => {
-  const { root } = open();
-
-  click(root, "⚠ Conflict");
-  assert.deepEqual(itemNames(root), ["CRUZ Dark"]);
-
-  click(root, "Stale");
-  assert.deepEqual(itemNames(root), ["Paint <b>Star</b> Runner"]);
-
-  click(root, "All");
-  assert.deepEqual(itemNames(root), ["CF-227 Badger Repeater", "CRUZ Dark", "Aztalan Arms", "M4A Cannon Defense Division"]);
-});
-
-test("search matches the name, the station and the reason, every word", () => {
-  const { root } = open();
-
-  type(root, "badger");
-  assert.deepEqual(itemNames(root), ["CF-227 Badger Repeater"]);
-
-  type(root, "keeger kiosk origin unknown");
-  assert.deepEqual(itemNames(root), ["M4A Cannon Defense Division"]);
-
-  type(root, "999000111");
-  assert.deepEqual(itemNames(root), ["Paint <b>Star</b> Runner"]);
-
-  type(root, "BADGER repeater");
-  assert.equal(itemNames(root).length, 1);
-});
-
-test("search and the state filter combine", () => {
-  const { root } = open();
-  click(root, "Deduced");
-  type(root, "arms");
-
-  assert.deepEqual(itemNames(root), ["Aztalan Arms"]);
-});
-
-test("a search that matches nothing says so", () => {
-  const { root } = open();
-  type(root, "no such thing");
-
-  assert.ok(pageText(root).includes("Nothing matches this filter."));
-  assert.deepEqual(itemNames(root), []);
-});
-
-test("before the first document it says it is waiting", () => {
-  const root = new FakeNode("div");
-  const view = createView(root, fakeDoc);
-  view.draw();
-
-  assert.ok(pageText(root).includes("Waiting for the tracker's first read of your logs."));
-  assert.equal(all(root).filter((n) => n.className.startsWith("pill ")).length, 0);
-});
-
 test("a document with nothing in a tab gives that tab its own empty message", () => {
   const empty = { schema: 1, counts: { verified: 0, deduced: 0, stale: 0, conflict: 0 }, systems: [], ships: [], dropped: [] };
   const { root } = open(empty);
@@ -216,20 +425,6 @@ test("a document with nothing in a tab gives that tab its own empty message", ()
   click(root, "Dropped");
   assert.ok(pageText(root).includes("Nothing is recorded as left on the ground."));
 });
-
-function openItem(root, name) {
-  const button = all(root).find(
-    (n) => n.className === "item-button" && n.children.some((c) => c.className === "item-name" && c.textContent === name),
-  );
-  assert.ok(button, `no item "${name}"`);
-  button.onclick();
-}
-
-function detail(root) {
-  const pane = all(root).find((n) => n.tag === "aside");
-  assert.ok(pane, "no detail pane");
-  return pane;
-}
 
 test("an item opens its detail: state and why, last seen, movements", () => {
   const { root } = open();
@@ -291,37 +486,6 @@ test("an open item stays open when a new document arrives", () => {
   assert.ok(pageText(detail(root)).includes("Ledger says 5, kiosk showed 2"));
 });
 
-test("a name that looks like markup is shown as text and builds no element", () => {
-  const { root } = open();
-  const hostile = "Paint <b>Star</b> Runner";
-  pickPlace(root, "location 999000111");
-
-  assert.ok(itemNames(root).includes(hostile));
-  assert.equal(all(root).filter((n) => n.tag === "b").length, 0);
-});
-
-test("nothing on the page can change the ledger: no edit control, only filters and navigation", () => {
-  const { root } = open();
-  openItem(root, "CRUZ Dark");
-
-  const tags = new Set(all(root).map((n) => n.tag));
-  for (const forbidden of ["textarea", "select", "form", "a", "iframe", "script"]) assert.ok(!tags.has(forbidden), forbidden);
-
-  const inputs = all(root).filter((n) => n.tag === "input");
-  assert.equal(inputs.length, 1);
-  assert.equal(inputs[0].attributes.type, "search");
-
-  const navigation = new Set(["item-button", "place-button", "system-toggle"]);
-  const labels = all(root).filter((n) => n.tag === "button" && !navigation.has(n.className)).map((n) => n.textContent);
-  assert.deepEqual(labels, [
-    "Locations", "Ships", "Dropped", "All", "✓ Verified", "Deduced", "Stale", "⚠ Conflict", "Close",
-  ]);
-  const everyButton = all(root).filter((n) => n.tag === "button").map((n) => texts(n).join(" "));
-  for (const word of ["Edit", "Rename", "Adjust", "Delete", "Save", "Add", "Confirm", "Correct"]) {
-    assert.ok(!everyButton.some((l) => l.includes(word)), word);
-  }
-});
-
 test("the window's wrapped message and a bare document are both taken", () => {
   const wrapped = new FakeNode("div");
   createView(wrapped, fakeDoc).receive({ type: "ocrx:view-data", data });
@@ -355,7 +519,7 @@ test("matching ignores case and extra spaces, and an empty query matches everyth
   assert.ok(matches(first, "   "));
   assert.ok(matches(first, "  KEEGER   badger "));
   assert.ok(!matches(first, "badger pistol"));
-  assert.equal(visible(entries(data), { tab: "locations", state: "all", query: "" }).length, 6);
+  assert.equal(visible(entries(data), { tab: "locations", query: "" }).length, 6);
 });
 
 test("a stray message leaves the page as it was", () => {
@@ -367,148 +531,6 @@ test("a stray message leaves the page as it was", () => {
   view.receive({ unrelated: true });
 
   assert.equal(pageText(root), before);
-});
-
-function memoryOf(kept = null) {
-  const memory = { kept, load: () => memory.kept, save: (next) => { memory.kept = structuredClone(next); } };
-  return memory;
-}
-
-test("the view opens on where the player stands and marks it", () => {
-  const { root } = open();
-
-  assert.equal(shownPlace(root), "Keeger — Nyx Social");
-  const marked = all(root).filter((n) => n.className === "place-button" && n.children.some((c) => c.className === "here"));
-  assert.deepEqual(marked.map((b) => b.children[0].textContent), ["Keeger — Nyx Social"]);
-  assert.equal(placeButton(root, "Keeger — Nyx Social").attributes["aria-current"], "true");
-});
-
-test("with no position, the view opens on the place something last happened at", () => {
-  const elsewhere = structuredClone(data);
-  elsewhere.here = "somewhere-in-space";
-  elsewhere.systems[0].stations[1].lastActivity = "2026-10-29T08:00:00Z";
-
-  assert.equal(shownPlace(open(elsewhere).root), "Levski");
-  assert.equal(byClass(open(elsewhere).root, "here").length, 0);
-});
-
-test("picking a place shows its items alone and closes the open item", () => {
-  const { root } = open();
-  openItem(root, "CRUZ Dark");
-
-  pickPlace(root, "Levski");
-
-  assert.equal(shownPlace(root), "Levski");
-  assert.deepEqual(itemNames(root), ["Pembroke Helmet"]);
-  assert.equal(all(root).filter((n) => n.tag === "aside").length, 0);
-});
-
-test("each place in the list counts its units and flags what needs a look", () => {
-  const { root } = open();
-  const row = (name) => placeButton(root, name).children.map((c) => c.className);
-
-  assert.equal(texts(placeButton(root, "Keeger — Nyx Social")).at(-1), "5");
-  assert.ok(row("Keeger — Nyx Social").includes("dot dot-conflict"));
-  assert.ok(row("location 999000111").includes("dot dot-stale"));
-  assert.ok(!row("Levski").some((c) => c.startsWith("dot")));
-});
-
-test("a filter keeps only the places with a match and counts the matches", () => {
-  const { root } = open();
-  click(root, "Deduced");
-
-  assert.deepEqual(byClass(root, "place-label"), ["Keeger — Nyx Social", "Levski"]);
-  assert.equal(texts(placeButton(root, "Levski")).at(-1), "1");
-  assert.deepEqual(byClass(root, "system-toggle"), []);
-
-  type(root, "helmet");
-  assert.deepEqual(byClass(root, "place-label"), ["Levski"]);
-  assert.equal(shownPlace(root), "Levski");
-  assert.deepEqual(itemNames(root), ["Pembroke Helmet"]);
-});
-
-test("the picked place comes back once the filter that hid it is cleared", () => {
-  const { root } = open();
-  pickPlace(root, "Levski");
-
-  click(root, "⚠ Conflict");
-  assert.equal(shownPlace(root), "Keeger — Nyx Social");
-
-  click(root, "All");
-  assert.equal(shownPlace(root), "Levski");
-});
-
-test("a single system lists its places with no system heading to fold", () => {
-  const nyxOnly = structuredClone(data);
-  nyxOnly.systems = nyxOnly.systems.slice(0, 1);
-  const { root } = open(nyxOnly);
-
-  assert.deepEqual(byClass(root, "system-toggle"), []);
-  assert.deepEqual(byClass(root, "place-label"), ["Keeger — Nyx Social", "Levski"]);
-});
-
-test("folding a system hides its places, except the one on show", () => {
-  const { root } = open();
-  const expanded = (name) => all(root).find((n) => n.className === "system-toggle" && n.textContent === name).attributes["aria-expanded"];
-
-  click(root, "Unknown system");
-  assert.deepEqual(byClass(root, "place-label"), ["Keeger — Nyx Social", "Levski"]);
-  assert.equal(expanded("Unknown system"), "false");
-
-  click(root, "Nyx");
-  assert.deepEqual(byClass(root, "place-label"), ["Keeger — Nyx Social"]);
-  assert.equal(expanded("Nyx"), "false");
-
-  click(root, "Nyx");
-  click(root, "Unknown system");
-  assert.deepEqual(byClass(root, "place-label"), ["Keeger — Nyx Social", "Levski", "location 999000111"]);
-});
-
-test("a filter lists its matches even in a folded system", () => {
-  const { root } = open();
-  click(root, "Nyx");
-  click(root, "Unknown system");
-
-  type(root, "helmet");
-  assert.deepEqual(byClass(root, "place-label"), ["Levski"]);
-
-  type(root, "");
-  assert.deepEqual(byClass(root, "place-label"), ["Keeger — Nyx Social"]);
-});
-
-test("a filtered place counts the units that matched, a stack as its quantity", () => {
-  const { root } = open();
-  click(root, "⚠ Conflict");
-
-  assert.equal(texts(placeButton(root, "Keeger — Nyx Social")).at(-1), "5");
-});
-
-test("an open item a filter moves off the list closes its detail", () => {
-  const { root } = open();
-  openItem(root, "CRUZ Dark");
-
-  type(root, "helmet");
-  assert.equal(all(root).filter((n) => n.tag === "aside").length, 0);
-});
-
-test("the picked place and the folded systems are kept for the next opening", () => {
-  const memory = memoryOf();
-  const first = open(data, memory).root;
-  pickPlace(first, "Levski");
-  click(first, "Unknown system");
-
-  assert.deepEqual(memory.kept, { place: "141810852", collapsed: ["Unknown system"] });
-  const again = open(data, memory).root;
-  assert.equal(shownPlace(again), "Levski");
-  assert.deepEqual(byClass(again, "place-label"), ["Keeger — Nyx Social", "Levski"]);
-});
-
-test("a kept place that is gone, or kept state that is not the view's, falls back to where the player is", () => {
-  assert.equal(shownPlace(open(data, memoryOf({ place: "gone", collapsed: ["Nyx"] })).root), "Keeger — Nyx Social");
-  assert.equal(shownPlace(open(data, memoryOf({ place: 42, collapsed: "Nyx" })).root), "Keeger — Nyx Social");
-  assert.equal(shownPlace(open(data, memoryOf("garbage")).root), "Keeger — Nyx Social");
-  assert.equal(shownPlace(open(data, memoryOf(5)).root), "Keeger — Nyx Social");
-  assert.equal(shownPlace(open(data, memoryOf([])).root), "Keeger — Nyx Social");
 });
 
 test("choosing a place: picked, else here, else newest activity, else first, else none", () => {

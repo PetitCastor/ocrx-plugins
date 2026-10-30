@@ -10,46 +10,41 @@ const VIEW_DATA_MESSAGE = "ocrx:view-data";
 /**
  * @param {Element} root where the view is built
  * @param {Document} doc the document to create nodes with
- * @param {{load: () => object|null, save: (kept: object) => void}} [memory] keeps the picked place and the
- *   folded systems between openings of the window; the view works the same without it
+ * @param {{load: () => object|null, save: (kept: object) => void}} [memory] keeps the picked place between
+ *   openings of the window; the view works the same without it
  */
 export function createView(root, doc, memory) {
   const kept = memory?.load() ?? {};
   const ui = {
     tab: "locations",
-    state: "all",
     query: "",
     selected: null,
     place: typeof kept.place === "string" ? kept.place : null,
-    collapsed: new Set(Array.isArray(kept.collapsed) ? kept.collapsed.filter((s) => typeof s === "string") : []),
   };
   let data = null;
 
-  const remember = () => memory?.save({ place: ui.place, collapsed: [...ui.collapsed] });
+  const remember = () => memory?.save({ place: ui.place });
   const draw = () => renderView(root, { doc, data, ui, on });
   const on = {
     tab: (tab) => { ui.tab = tab; ui.selected = null; draw(); },
-    state: (state) => { ui.state = state; draw(); },
     // Typing rebuilds the list but not the search box, or the caret would jump out from under the user.
-    query: (query) => { ui.query = query; drawKeepingSearch(); },
+    query: (query) => { ui.query = query; drawKeepingFocus(); },
     select: (id) => { ui.selected = id; draw(); },
-    place: (id) => { ui.place = id; ui.selected = null; remember(); draw(); },
-    toggle: (system) => {
-      if (!ui.collapsed.delete(system)) ui.collapsed.add(system);
-      remember();
-      draw();
-    },
+    place: (id) => { ui.place = id; ui.selected = null; remember(); drawKeepingFocus(); },
   };
 
-  function drawKeepingSearch() {
-    const search = root.querySelector?.(".search");
-    const position = search?.selectionStart;
+  // A redraw replaces the search box and the dropdowns. The one in use gets the focus back: the caret
+  // must not jump out from under someone typing, and arrowing through a closed dropdown must not stop
+  // after its first step.
+  function drawKeepingFocus() {
+    const focused = doc.activeElement;
+    const which = ["search", "picker-system", "picker-place"].find((c) => focused?.classList?.contains(c));
+    const position = which === "search" ? focused.selectionStart : null;
     draw();
-    const again = root.querySelector?.(".search");
-    if (again && search) {
-      again.focus();
-      if (position != null) again.setSelectionRange(position, position);
-    }
+    const again = which ? root.querySelector?.(`.${which}`) : null;
+    if (!again) return;
+    again.focus();
+    if (position != null) again.setSelectionRange(position, position);
   }
 
   return {
@@ -59,7 +54,7 @@ export function createView(root, doc, memory) {
       // Only the plugin's document, or its absence, replaces what is shown: a stray message must not blank the page.
       if (next !== null && (typeof next !== "object" || next.schema === undefined)) return;
       data = next;
-      drawKeepingSearch();
+      drawKeepingFocus();
     },
     draw,
   };
