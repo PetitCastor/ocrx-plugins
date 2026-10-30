@@ -1,0 +1,11 @@
+{
+  "tag": "v0.1.0-itemtracker-alpha.4",
+  "channel": "preview",
+  "plugins": [
+    "ItemTrackerPlugin"
+  ],
+  "notes": "Item Tracker alpha preview, fourth build. Unsigned, opt-in, and may change incompatibly between previews. Works with OCRX engine v2.1.1 or later. Needs the Microsoft Edge WebView2 Runtime, which Windows 10 and 11 include. Built on Ocrx.Sdk 2.9.0.",
+  "changes": [
+    "Changed: Locations shows one place at a time, picked from a list grouped by system, and opens where you last were. A station the game gave a new id is no longer listed twice."
+  ]
+}
