@@ -53,6 +53,9 @@
     </None>
   </ItemGroup>
 
+  <!-- ItemTracker.ico is generated from Window\ItemTracker.svg (OCRX's corner brackets around a cargo
+       cube) with ImageMagick, the way the engine builds its app.ico:
+       magick -background none -density 1200 ItemTracker.svg -define icon:auto-resize=16,20,24,32,40,48,64,256 ItemTracker.ico -->
   <ItemGroup>
     <EmbeddedResource Include="Window\ItemTracker.ico" LogicalName="ItemTrackerPlugin.Window.ItemTracker.ico" />
   </ItemGroup>
