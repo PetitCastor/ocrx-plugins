@@ -52,18 +52,19 @@ the latest one waits for a window not shown yet. There is no data file and no si
 
 The page is plain ES modules (`model.js` pure rules, `render.js` DOM, `main.js` entry). Everything the
 document says reaches the page through `textContent`, never as markup. Tabs: Locations, Ships (by
-model: the logs cannot tell two ships of one model apart), Dropped (search leads). Each can be filtered
-by state and by text; an item opens a detail with its state and why, the last time it was seen on
-screen, and its recent movements. A station the game's text has not named yet shows its id.
+model: the logs cannot tell two ships of one model apart), Dropped (search leads). Each can be searched
+by text. The list shows names and quantities only; an item's state lives in its detail, with why, the
+last time it was seen on screen, and its recent movements. The header (title, tabs, search, pickers)
+stays put and only the list and the detail scroll.
 
-Locations shows one station at a time, picked from a list of places beside it, grouped by system as
-`inventory-tracker`'s system and place pickers were. A system heading folds its places away, except the
-one on show; with a single system there are no headings. Each place carries its units and a dot when
-something there is in conflict or stale. A filter keeps only the places with a match, each with the
-units that matched, unfolds every system so no match is out of reach, and moves to the first one when the place on show has none; the place picked comes
-back once the filter is cleared. The page opens on the place picked last (kept in the page's
-`localStorage`, which may be missing: the page then works the same), else where the logs last placed
-the player (`here`, marked in the list), else the place something last happened at.
+Locations shows one station at a time, picked with two dropdowns above the list, System then Place, as
+`inventory-tracker`'s pickers were. Each place option carries its units and "you are here" for where the
+logs last placed the player. Changing system opens the place there the player stands at, else the one
+something last happened at. A search keeps only the systems and places with a match, each with the units
+that matched, and moves to the first one when the place on show has none; the place picked comes back
+once the search is cleared. The page opens on the place picked last (kept in the page's `localStorage`,
+which may be missing: the page then works the same), else where the player is (`here`), else the place
+something last happened at. A station the game's text has not named yet says so, with its id.
 
 ### The document (`schema` 1)
 

@@ -10,35 +10,27 @@ const VIEW_DATA_MESSAGE = "ocrx:view-data";
 /**
  * @param {Element} root where the view is built
  * @param {Document} doc the document to create nodes with
- * @param {{load: () => object|null, save: (kept: object) => void}} [memory] keeps the picked place and the
- *   folded systems between openings of the window; the view works the same without it
+ * @param {{load: () => object|null, save: (kept: object) => void}} [memory] keeps the picked place between
+ *   openings of the window; the view works the same without it
  */
 export function createView(root, doc, memory) {
   const kept = memory?.load() ?? {};
   const ui = {
     tab: "locations",
-    state: "all",
     query: "",
     selected: null,
     place: typeof kept.place === "string" ? kept.place : null,
-    collapsed: new Set(Array.isArray(kept.collapsed) ? kept.collapsed.filter((s) => typeof s === "string") : []),
   };
   let data = null;
 
-  const remember = () => memory?.save({ place: ui.place, collapsed: [...ui.collapsed] });
+  const remember = () => memory?.save({ place: ui.place });
   const draw = () => renderView(root, { doc, data, ui, on });
   const on = {
     tab: (tab) => { ui.tab = tab; ui.selected = null; draw(); },
-    state: (state) => { ui.state = state; draw(); },
     // Typing rebuilds the list but not the search box, or the caret would jump out from under the user.
     query: (query) => { ui.query = query; drawKeepingSearch(); },
     select: (id) => { ui.selected = id; draw(); },
     place: (id) => { ui.place = id; ui.selected = null; remember(); draw(); },
-    toggle: (system) => {
-      if (!ui.collapsed.delete(system)) ui.collapsed.add(system);
-      remember();
-      draw();
-    },
   };
 
   function drawKeepingSearch() {
