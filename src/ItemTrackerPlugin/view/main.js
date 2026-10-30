@@ -28,20 +28,23 @@ export function createView(root, doc, memory) {
   const on = {
     tab: (tab) => { ui.tab = tab; ui.selected = null; draw(); },
     // Typing rebuilds the list but not the search box, or the caret would jump out from under the user.
-    query: (query) => { ui.query = query; drawKeepingSearch(); },
+    query: (query) => { ui.query = query; drawKeepingFocus(); },
     select: (id) => { ui.selected = id; draw(); },
-    place: (id) => { ui.place = id; ui.selected = null; remember(); draw(); },
+    place: (id) => { ui.place = id; ui.selected = null; remember(); drawKeepingFocus(); },
   };
 
-  function drawKeepingSearch() {
-    const search = root.querySelector?.(".search");
-    const position = search?.selectionStart;
+  // A redraw replaces the search box and the dropdowns. The one in use gets the focus back: the caret
+  // must not jump out from under someone typing, and arrowing through a closed dropdown must not stop
+  // after its first step.
+  function drawKeepingFocus() {
+    const focused = doc.activeElement;
+    const which = ["search", "picker-system", "picker-place"].find((c) => focused?.classList?.contains(c));
+    const position = which === "search" ? focused.selectionStart : null;
     draw();
-    const again = root.querySelector?.(".search");
-    if (again && search) {
-      again.focus();
-      if (position != null) again.setSelectionRange(position, position);
-    }
+    const again = which ? root.querySelector?.(`.${which}`) : null;
+    if (!again) return;
+    again.focus();
+    if (position != null) again.setSelectionRange(position, position);
   }
 
   return {
@@ -51,7 +54,7 @@ export function createView(root, doc, memory) {
       // Only the plugin's document, or its absence, replaces what is shown: a stray message must not blank the page.
       if (next !== null && (typeof next !== "object" || next.schema === undefined)) return;
       data = next;
-      drawKeepingSearch();
+      drawKeepingFocus();
     },
     draw,
   };

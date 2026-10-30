@@ -32,9 +32,25 @@ class FakeNode {
   setAttribute(name, value) {
     this.attributes[name] = String(value);
   }
+
+  get classList() {
+    return { contains: (c) => this.className.split(" ").includes(c) };
+  }
+
+  querySelector(selector) {
+    return all(this).find((n) => n !== this && n.classList.contains(selector.replace(/^\./, ""))) ?? null;
+  }
+
+  focus() {
+    fakeDoc.activeElement = this;
+  }
+
+  setSelectionRange(start) {
+    this.selectionStart = start;
+  }
 }
 
-const fakeDoc = { createElement: (tag) => new FakeNode(tag) };
+const fakeDoc = { createElement: (tag) => new FakeNode(tag), activeElement: null };
 
 function all(node) {
   return [node, ...node.children.flatMap(all)];
@@ -314,6 +330,58 @@ test("with no position, the view opens on the place something last happened at",
 
   assert.equal(chosen(root, "Place"), "Levski (1)");
   assert.ok(!options(root, "Place").some((o) => o.includes("you are here")));
+});
+
+test("the dropdown in use keeps the focus through the redraw it causes, and a new document", () => {
+  const { root, view } = open();
+  picker(root, "Place").focus();
+
+  choose(root, "Place", "Levski");
+  assert.equal(fakeDoc.activeElement, picker(root, "Place"));
+
+  view.receive(structuredClone(data));
+  assert.equal(fakeDoc.activeElement, picker(root, "Place"));
+
+  picker(root, "System").focus();
+  choose(root, "System", "Unknown system");
+  assert.equal(fakeDoc.activeElement, picker(root, "System"));
+  fakeDoc.activeElement = null;
+});
+
+test("a new document leaves the focus alone when nothing on the page had it", () => {
+  fakeDoc.activeElement = null;
+  const { view } = open();
+  view.receive(structuredClone(data));
+
+  assert.equal(fakeDoc.activeElement, null);
+});
+
+test("changing to the system the player is in opens where the player stands, not the newest place", () => {
+  const busy = structuredClone(data);
+  busy.systems[0].stations[1].lastActivity = "2026-10-29T08:00:00Z";
+  const { root } = open(busy);
+  choose(root, "System", "Unknown system");
+
+  choose(root, "System", "Nyx");
+  assert.equal(chosen(root, "Place"), KEEGER);
+});
+
+test("a single system still has its System dropdown, with that one system", () => {
+  const nyxOnly = structuredClone(data);
+  nyxOnly.systems = nyxOnly.systems.slice(0, 1);
+  const { root } = open(nyxOnly);
+
+  assert.deepEqual(options(root, "System"), ["Nyx"]);
+  assert.deepEqual(options(root, "Place"), [KEEGER, "Levski (1)"]);
+});
+
+test("kept state from the earlier place list (folded systems) is ignored", () => {
+  const memory = memoryOf({ place: "141810852", collapsed: ["Nyx"] });
+  const { root } = open(data, memory);
+
+  assert.equal(chosen(root, "Place"), "Levski (1)");
+  choose(root, "Place", "Keeger");
+  assert.deepEqual(memory.kept, { place: "3058615591" });
 });
 
 test("the picked place is kept for the next opening", () => {

@@ -48,6 +48,8 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
+  /* In a window too short for the header and some list, the whole page scrolls instead. */
+  overflow-y: auto;
   max-width: 1100px;
   margin: 0 auto;
   padding: 12px 16px 0;
@@ -96,9 +98,10 @@ body {
 
 .body {
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: 180px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 14px;
 }
 .list, .detail { min-height: 0; overflow-y: auto; padding-bottom: 16px; }
