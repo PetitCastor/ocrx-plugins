@@ -59,8 +59,8 @@ screen, and its recent movements. A station the game's text has not named yet sh
 Locations shows one station at a time, picked from a list of places beside it, grouped by system as
 `inventory-tracker`'s system and place pickers were. A system heading folds its places away, except the
 one on show; with a single system there are no headings. Each place carries its units and a dot when
-something there is in conflict or stale. A filter keeps only the places with a match, each with its
-number of matches, and moves to the first one when the place on show has none; the place picked comes
+something there is in conflict or stale. A filter keeps only the places with a match, each with the
+units that matched, unfolds every system so no match is out of reach, and moves to the first one when the place on show has none; the place picked comes
 back once the filter is cleared. The page opens on the place picked last (kept in the page's
 `localStorage`, which may be missing: the page then works the same), else where the logs last placed
 the player (`here`, marked in the list), else the place something last happened at.

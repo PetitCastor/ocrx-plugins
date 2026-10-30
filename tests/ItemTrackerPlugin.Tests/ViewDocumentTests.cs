@@ -1,13 +1,11 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using ItemTrackerPlugin.App;
-using ItemTrackerPlugin.Data;
 using ItemTrackerPlugin.Model;
 using ItemTrackerPlugin.Naming;
 using ItemTrackerPlugin.Reconcile;
 using ItemTrackerPlugin.Resolve;
 using ItemTrackerPlugin.ViewData;
-using Microsoft.Data.Sqlite;
 using Ocrx.Sdk;
 
 namespace ItemTrackerPlugin.Tests;
@@ -36,41 +34,6 @@ public sealed class ViewDocumentTests
                 arrivals ?? [],
                 coverage ?? [new StationCoverage("123", Now, 2, 3, 9, null)],
                 Unplaced: 0));
-
-    /// <summary>A throwaway store to name places in, so the document is built against a real catalogue.</summary>
-    private sealed class ScratchStore : IDisposable
-    {
-        private readonly string _directory = Path.Combine(Path.GetTempPath(), $"itrk-view-{Guid.NewGuid():N}");
-
-        public ScratchStore()
-        {
-            Directory.CreateDirectory(_directory);
-            Db = new TrackerDb(Path.Combine(_directory, "tracker.db"));
-            Db.Initialize();
-        }
-
-        public TrackerDb Db { get; }
-
-        public void Name(string id, string raw, int evidence) =>
-            Execute($"INSERT INTO location_name(location_id, name, evidence_count) VALUES('{id}', '{raw}', {evidence})");
-
-        public void Vote(string id, string kind, string value) =>
-            Execute($"INSERT INTO place_evidence(location_id, kind, value, hits) VALUES('{id}', '{kind}', '{value}', 3)");
-
-        private void Execute(string sql)
-        {
-            using var cn = Db.Open();
-            using var cmd = cn.CreateCommand();
-            cmd.CommandText = sql;
-            cmd.ExecuteNonQuery();
-        }
-
-        public void Dispose()
-        {
-            SqliteConnection.ClearAllPools();
-            Directory.Delete(_directory, recursive: true);
-        }
-    }
 
     [Fact]
     public void Stations_ships_and_drops_each_get_their_rows_with_state_and_reason()

@@ -449,16 +449,46 @@ test("a single system lists its places with no system heading to fold", () => {
 
 test("folding a system hides its places, except the one on show", () => {
   const { root } = open();
+  const expanded = (name) => all(root).find((n) => n.className === "system-toggle" && n.textContent === name).attributes["aria-expanded"];
 
   click(root, "Unknown system");
   assert.deepEqual(byClass(root, "place-label"), ["Keeger — Nyx Social", "Levski"]);
+  assert.equal(expanded("Unknown system"), "false");
 
   click(root, "Nyx");
-  assert.deepEqual(byClass(root, "place-label"), ["Keeger — Nyx Social", "Levski"]);
-  assert.equal(all(root).find((n) => n.textContent === "Nyx" && n.tag === "button").attributes["aria-expanded"], "true");
+  assert.deepEqual(byClass(root, "place-label"), ["Keeger — Nyx Social"]);
+  assert.equal(expanded("Nyx"), "false");
 
+  click(root, "Nyx");
   click(root, "Unknown system");
   assert.deepEqual(byClass(root, "place-label"), ["Keeger — Nyx Social", "Levski", "location 999000111"]);
+});
+
+test("a filter lists its matches even in a folded system", () => {
+  const { root } = open();
+  click(root, "Nyx");
+  click(root, "Unknown system");
+
+  type(root, "helmet");
+  assert.deepEqual(byClass(root, "place-label"), ["Levski"]);
+
+  type(root, "");
+  assert.deepEqual(byClass(root, "place-label"), ["Keeger — Nyx Social"]);
+});
+
+test("a filtered place counts the units that matched, a stack as its quantity", () => {
+  const { root } = open();
+  click(root, "⚠ Conflict");
+
+  assert.equal(texts(placeButton(root, "Keeger — Nyx Social")).at(-1), "5");
+});
+
+test("an open item a filter moves off the list closes its detail", () => {
+  const { root } = open();
+  openItem(root, "CRUZ Dark");
+
+  type(root, "helmet");
+  assert.equal(all(root).filter((n) => n.tag === "aside").length, 0);
 });
 
 test("the picked place and the folded systems are kept for the next opening", () => {
@@ -477,6 +507,8 @@ test("a kept place that is gone, or kept state that is not the view's, falls bac
   assert.equal(shownPlace(open(data, memoryOf({ place: "gone", collapsed: ["Nyx"] })).root), "Keeger — Nyx Social");
   assert.equal(shownPlace(open(data, memoryOf({ place: 42, collapsed: "Nyx" })).root), "Keeger — Nyx Social");
   assert.equal(shownPlace(open(data, memoryOf("garbage")).root), "Keeger — Nyx Social");
+  assert.equal(shownPlace(open(data, memoryOf(5)).root), "Keeger — Nyx Social");
+  assert.equal(shownPlace(open(data, memoryOf([])).root), "Keeger — Nyx Social");
 });
 
 test("choosing a place: picked, else here, else newest activity, else first, else none", () => {

@@ -54,20 +54,22 @@ export function renderView(root, { doc, data, ui, on }) {
 
   const all = entries(data);
   let list = visible(all, ui);
-  const selected = all.find((e) => e.id === ui.selected);
 
   const body = el(doc, "div", "body");
   if (ui.tab === "locations") {
     // One station at a time, picked from the list of places beside it: every station in one long page
     // stops being readable as soon as the player stores things in more than one system.
-    const systems = placeTree(data, list, filtering(ui));
+    const isFiltering = filtering(ui);
+    const systems = placeTree(data, list, isFiltering);
     const shown = choosePlace(systems, ui.place, data.here);
     list = list.filter((e) => e.placeId === shown);
     if (systems.length) {
       body.className = "body body-tree";
-      body.append(placesNav(doc, systems, shown, data.here, ui, on));
+      body.append(placesNav(doc, systems, shown, data.here, isFiltering, ui, on));
     }
   }
+  // An item a filter, or a jump to another place, took off the list keeps no detail open beside it.
+  const selected = list.find((e) => e.id === ui.selected);
   body.append(listPane(doc, data, all, list, ui, on));
   if (selected) body.append(detailPane(doc, selected, on));
   shell.append(body);
@@ -138,16 +140,17 @@ function listPane(doc, data, all, list, ui, on) {
 }
 
 /**
- * The places the Locations tab can show, by system. A system's heading folds its places away; with a
- * single system there is nothing to tell apart, so the places are listed bare.
+ * The places the Locations tab can show, by system. A system's heading folds its places away, all but
+ * the one on show; with a single system there is nothing to tell apart, so the places are listed bare.
+ * A filter unfolds everything, or a match could sit out of reach in a folded system.
  */
-function placesNav(doc, systems, shown, here, ui, on) {
+function placesNav(doc, systems, shown, here, isFiltering, ui, on) {
   const nav = el(doc, "nav", "places");
   nav.setAttribute("aria-label", "Places");
   const titled = systems.length > 1;
 
   for (const system of systems) {
-    const folded = titled && ui.collapsed.has(system.name) && !system.places.some((p) => p.id === shown);
+    const folded = titled && !isFiltering && ui.collapsed.has(system.name);
     if (titled) {
       const toggle = el(doc, "button", "system-toggle", system.name);
       toggle.setAttribute("type", "button");
@@ -155,10 +158,11 @@ function placesNav(doc, systems, shown, here, ui, on) {
       toggle.onclick = () => on.toggle(system.name);
       nav.append(toggle);
     }
-    if (folded) continue;
+    const listed = folded ? system.places.filter((p) => p.id === shown) : system.places;
+    if (listed.length === 0) continue;
 
     const places = el(doc, "ul", "place-list");
-    for (const place of system.places) {
+    for (const place of listed) {
       const item = el(doc, "li", place.id === shown ? "place-entry place-on" : "place-entry");
       const button = el(doc, "button", "place-button");
       button.setAttribute("type", "button");

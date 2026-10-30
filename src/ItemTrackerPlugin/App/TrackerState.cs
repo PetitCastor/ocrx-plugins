@@ -167,7 +167,9 @@ public sealed class TrackerState(
         movesCmd.CommandText = "SELECT COUNT(*) FROM move";
         var moves = Convert.ToInt64(movesCmd.ExecuteScalar(), CultureInfo.InvariantCulture);
 
-        // Each file keeps where the player stood at its watermark; the newest file's is the latest.
+        // Each file keeps where the player stood at its watermark; the newest file's is the latest. A log
+        // that has not placed the player yet falls back to the one before: in-game, the player spawns
+        // where the last session ended far more often than not, and the page only opens on it.
         using var hereCmd = cn.CreateCommand();
         hereCmd.CommandText = """
             SELECT cur_loc_id FROM session

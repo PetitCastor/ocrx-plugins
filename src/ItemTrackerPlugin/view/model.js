@@ -104,8 +104,8 @@ const ATTENTION = ["conflict", "stale"];
 
 /**
  * The places of the Locations tab, by system, as the list beside the items shows them. Unfiltered, every
- * station is listed with its units; filtered, only the stations with a match are, each with how many of
- * its items matched. `attention` is the worst state among what the place lists, when it needs a look.
+ * station is listed with its units; filtered, only the stations with a match are, each with the units
+ * that matched. `attention` is the worst state among what the place lists, when it needs a look.
  */
 export function placeTree(data, list, isFiltering) {
   const matched = new Map();
@@ -127,7 +127,7 @@ export function placeTree(data, list, isFiltering) {
         name: station.name,
         system: system.name,
         lastActivity: station.lastActivity ?? null,
-        count: isFiltering ? hits.length : STATES.reduce((n, s) => n + (counts[s] ?? 0), 0),
+        count: STATES.reduce((n, s) => n + (counts[s] ?? 0), 0),
         attention: ATTENTION.find((s) => counts[s] > 0) ?? null,
       });
     }
