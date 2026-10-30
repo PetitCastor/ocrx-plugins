@@ -94,6 +94,62 @@ export function byPlace(list) {
   return [...groups.values()];
 }
 
+/** True when the state filter or the search narrows what is shown. */
+export function filtering(ui) {
+  return ui.state !== "all" || (ui.query ?? "").trim() !== "";
+}
+
+// Worst first: the dot a place carries in the list says the most urgent thing about it.
+const ATTENTION = ["conflict", "stale"];
+
+/**
+ * The places of the Locations tab, by system, as the list beside the items shows them. Unfiltered, every
+ * station is listed with its units; filtered, only the stations with a match are, each with the units
+ * that matched. `attention` is the worst state among what the place lists, when it needs a look.
+ */
+export function placeTree(data, list, isFiltering) {
+  const matched = new Map();
+  for (const e of list) {
+    if (e.tab !== "locations") continue;
+    if (!matched.has(e.placeId)) matched.set(e.placeId, []);
+    matched.get(e.placeId).push(e);
+  }
+
+  const systems = [];
+  for (const system of data?.systems ?? []) {
+    const places = [];
+    for (const station of system.stations ?? []) {
+      const hits = matched.get(station.id) ?? [];
+      if (isFiltering && hits.length === 0) continue;
+      const counts = isFiltering ? tally(hits) : { ...tally([]), ...station.counts };
+      places.push({
+        id: station.id,
+        name: station.name,
+        system: system.name,
+        lastActivity: station.lastActivity ?? null,
+        count: STATES.reduce((n, s) => n + (counts[s] ?? 0), 0),
+        attention: ATTENTION.find((s) => counts[s] > 0) ?? null,
+      });
+    }
+    if (places.length) systems.push({ name: system.name, places });
+  }
+  return systems;
+}
+
+/**
+ * The place to show: the one picked, while it is still listed; else where the player stands; else the
+ * place something last happened at; else the first. Null when nothing is listed.
+ */
+export function choosePlace(systems, picked, here) {
+  const places = systems.flatMap((s) => s.places);
+  const listed = (id) => id != null && places.some((p) => p.id === id);
+  if (listed(picked)) return picked;
+  if (listed(here)) return here;
+  const dated = places.filter((p) => p.lastActivity);
+  if (dated.length) return dated.reduce((a, b) => (b.lastActivity > a.lastActivity ? b : a)).id;
+  return places[0]?.id ?? null;
+}
+
 /** Units per state over a list, counting a stack's quantity. */
 export function tally(list) {
   const t = { verified: 0, deduced: 0, stale: 0, conflict: 0 };

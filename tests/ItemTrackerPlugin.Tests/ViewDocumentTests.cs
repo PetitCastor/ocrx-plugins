@@ -19,16 +19,20 @@ public sealed class ViewDocumentTests
         new(null, itemClass, quantity, [new HoldingLink(kind, key, label)], Stored, "Store", 1.0, false, []);
 
     private static TrackerState.Snapshot Snapshot(
-        IReadOnlyList<(ItemHolding Held, PlacementState State)> items, IReadOnlyList<UnknownArrival>? arrivals = null) =>
+        IReadOnlyList<(ItemHolding Held, PlacementState State)> items,
+        IReadOnlyList<UnknownArrival>? arrivals = null,
+        HoldingResolver? resolver = null,
+        IReadOnlyList<StationCoverage>? coverage = null,
+        IngestHealth? health = null) =>
         new(
             items.Select(i => new NamedHolding(i.Held, new ResolvedName(i.Held.ItemClass, i.Held.ItemClass.Replace('_', ' '), NameMatch.None, null))).ToList(),
-            Resolver: null,
+            resolver,
             Now,
-            IngestHealth.Empty,
+            health ?? IngestHealth.Empty,
             new Reconciliation(
                 items.Select(i => new ReconciledHolding(i.Held, i.State, $"because {i.State}", i.State == PlacementState.Verified ? Now : null)).ToList(),
                 arrivals ?? [],
-                [new StationCoverage("123", Now, 2, 3, 9, null)],
+                coverage ?? [new StationCoverage("123", Now, 2, 3, 9, null)],
                 Unplaced: 0));
 
     [Fact]
@@ -85,6 +89,60 @@ public sealed class ViewDocumentTests
         Assert.Equal("verified", seen["state"]!.GetValue<string>());
         Assert.Equal("Seen on screen", seen["lastMoveType"]!.GetValue<string>());
         Assert.Equal(1, doc["counts"]!["verified"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public void A_station_the_game_gave_two_ids_is_one_place_with_both_ids_items_and_counts()
+    {
+        using var store = new ScratchStore();
+        store.Name("111", "Nyx_Kaboos", evidence: 5);
+        store.Name("222", "Nyx_Kaboos", evidence: 1);
+        store.Vote("111", "system", "Nyx");
+        var resolver = HoldingResolver.Load(store.Db);
+
+        var doc = ViewDocument.Build(Snapshot(
+            [
+                (Held(InventoryKind.Location, "111", "Kaboos", "Drink_a"), PlacementState.Verified),
+                (Held(InventoryKind.Location, "222", "Kaboos", "Gun_b", 3), PlacementState.Deduced),
+            ],
+            resolver: resolver,
+            coverage: [new StationCoverage("222", Now, 1, 1, 4, 4)]));
+
+        var system = Assert.Single(doc["systems"]!.AsArray());
+        Assert.Equal("Nyx", system!["name"]!.GetValue<string>());
+        var station = Assert.Single(system["stations"]!.AsArray())!;
+        Assert.Equal("111", station["id"]!.GetValue<string>());
+        Assert.Equal(["111", "222"], station["aliasIds"]!.AsArray().Select(a => a!.GetValue<string>()));
+        Assert.Equal(["Drink a", "Gun b"], station["items"]!.AsArray().Select(i => i!["name"]!.GetValue<string>()));
+        Assert.Equal(1, station["counts"]!["verified"]!.GetValue<int>());
+        Assert.Equal(3, station["counts"]!["deduced"]!.GetValue<int>());
+        Assert.True(station["coverage"]!["complete"]!.GetValue<bool>());
+        Assert.DoesNotContain("(Nyx)", station["name"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void Where_the_player_stands_is_given_as_the_place_its_id_belongs_to()
+    {
+        using var store = new ScratchStore();
+        store.Name("111", "Nyx_Kaboos", evidence: 5);
+        store.Name("222", "Nyx_Kaboos", evidence: 1);
+        var resolver = HoldingResolver.Load(store.Db);
+        var health = IngestHealth.Empty with { CurrentLocationId = "222" };
+
+        var doc = ViewDocument.Build(Snapshot([(Held(InventoryKind.Location, "111", "Kaboos"), PlacementState.Deduced)], resolver: resolver, health: health));
+
+        Assert.Equal("111", doc["here"]!.GetValue<string>());
+        Assert.Null(ViewDocument.Build(Snapshot([]))["here"]);
+    }
+
+    [Fact]
+    public void A_station_is_dated_by_the_newest_move_sighting_or_visit_there()
+    {
+        var doc = ViewDocument.Build(Snapshot([(Held(InventoryKind.Location, "123", "Keeger"), PlacementState.Deduced)]));
+        Assert.Equal("2026-10-29T12:00:00Z", doc["systems"]![0]!["stations"]![0]!["lastActivity"]!.GetValue<string>());
+
+        var unvisited = ViewDocument.Build(Snapshot([(Held(InventoryKind.Location, "456", "Elsewhere"), PlacementState.Deduced)]));
+        Assert.Equal("2026-10-21T18:00:00Z", unvisited["systems"]![0]!["stations"]![0]!["lastActivity"]!.GetValue<string>());
     }
 
     [Fact]

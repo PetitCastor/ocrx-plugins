@@ -1,10 +1,12 @@
 // Builds the Item Tracker view into a DOM. Everything the document says reaches the page through
 // textContent, never as markup, because item names come off the screen and out of the game's files.
 // The view only looks: there is no control that changes the ledger, and no way for the page to send
-// anything back. The only inputs are the tab, the state filter and the search box, which filter what
-// is shown.
+// anything back. The only inputs are the tab, the place picked in the list of places, the state filter
+// and the search box, which choose and filter what is shown.
 
-import { STATES, TABS, byPlace, entries, formatTime, stateHelp, stateLabel, tally, visible } from "./model.js";
+import {
+  STATES, TABS, byPlace, choosePlace, entries, filtering, formatTime, placeTree, stateHelp, stateLabel, tally, visible,
+} from "./model.js";
 
 const SHIPS_NOTE =
   "The logs cannot tell two ships of the same model apart, so storage is grouped by model.";
@@ -37,8 +39,8 @@ function tallyLine(doc, counts) {
  * @param {object} options
  * @param {Document} options.doc the document to create nodes with
  * @param {object|null} options.data the plugin's document, or null before the first one arrives
- * @param {{tab: string, state: string, query: string, selected: string|null}} options.ui
- * @param {{tab: Function, state: Function, query: Function, select: Function}} options.on
+ * @param {{tab: string, state: string, query: string, selected: string|null, place: string|null, collapsed: Set<string>}} options.ui
+ * @param {{tab: Function, state: Function, query: Function, select: Function, place: Function, toggle: Function}} options.on
  */
 export function renderView(root, { doc, data, ui, on }) {
   const shell = el(doc, "div", "shell");
@@ -51,10 +53,23 @@ export function renderView(root, { doc, data, ui, on }) {
   }
 
   const all = entries(data);
-  const list = visible(all, ui);
-  const selected = all.find((e) => e.id === ui.selected);
+  let list = visible(all, ui);
 
   const body = el(doc, "div", "body");
+  if (ui.tab === "locations") {
+    // One station at a time, picked from the list of places beside it: every station in one long page
+    // stops being readable as soon as the player stores things in more than one system.
+    const isFiltering = filtering(ui);
+    const systems = placeTree(data, list, isFiltering);
+    const shown = choosePlace(systems, ui.place, data.here);
+    list = list.filter((e) => e.placeId === shown);
+    if (systems.length) {
+      body.className = "body body-tree";
+      body.append(placesNav(doc, systems, shown, data.here, isFiltering, ui, on));
+    }
+  }
+  // An item a filter, or a jump to another place, took off the list keeps no detail open beside it.
+  const selected = list.find((e) => e.id === ui.selected);
   body.append(listPane(doc, data, all, list, ui, on));
   if (selected) body.append(detailPane(doc, selected, on));
   shell.append(body);
@@ -117,15 +132,62 @@ function listPane(doc, data, all, list, ui, on) {
   }
 
   const stations = new Map((data.systems ?? []).flatMap((s) => s.stations ?? []).map((s) => [s.id, s]));
-  let system = null;
   for (const place of byPlace(list)) {
-    if (ui.tab === "locations" && place.group !== system) {
-      system = place.group;
-      pane.append(el(doc, "h2", "system", system));
-    }
+    if (ui.tab === "locations") pane.append(el(doc, "h2", "system", place.group));
     pane.append(placeBlock(doc, place, ui.tab === "locations" ? stations.get(place.placeId) : null, ui, on));
   }
   return pane;
+}
+
+/**
+ * The places the Locations tab can show, by system. A system's heading folds its places away, all but
+ * the one on show; with a single system there is nothing to tell apart, so the places are listed bare.
+ * A filter unfolds everything, or a match could sit out of reach in a folded system.
+ */
+function placesNav(doc, systems, shown, here, isFiltering, ui, on) {
+  const nav = el(doc, "nav", "places");
+  nav.setAttribute("aria-label", "Places");
+  const titled = systems.length > 1;
+
+  for (const system of systems) {
+    const folded = titled && !isFiltering && ui.collapsed.has(system.name);
+    if (titled) {
+      const toggle = el(doc, "button", "system-toggle", system.name);
+      toggle.setAttribute("type", "button");
+      toggle.setAttribute("aria-expanded", String(!folded));
+      toggle.onclick = () => on.toggle(system.name);
+      nav.append(toggle);
+    }
+    const listed = folded ? system.places.filter((p) => p.id === shown) : system.places;
+    if (listed.length === 0) continue;
+
+    const places = el(doc, "ul", "place-list");
+    for (const place of listed) {
+      const item = el(doc, "li", place.id === shown ? "place-entry place-on" : "place-entry");
+      const button = el(doc, "button", "place-button");
+      button.setAttribute("type", "button");
+      if (place.id === shown) button.setAttribute("aria-current", "true");
+      button.onclick = () => on.place(place.id);
+
+      const label = el(doc, "span", "place-label", place.name);
+      button.append(label);
+      if (place.id === here) {
+        const marker = el(doc, "span", "here", "here");
+        marker.setAttribute("title", "Where the logs last placed you");
+        button.append(marker);
+      }
+      if (place.attention) {
+        const dot = el(doc, "span", `dot dot-${place.attention}`);
+        dot.setAttribute("title", stateLabel(place.attention));
+        button.append(dot);
+      }
+      button.append(el(doc, "span", "place-count", place.count));
+      item.append(button);
+      places.append(item);
+    }
+    nav.append(places);
+  }
+  return nav;
 }
 
 function emptyTab(tab) {

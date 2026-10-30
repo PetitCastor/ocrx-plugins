@@ -82,6 +82,21 @@ public sealed class TrackerStateTests : IDisposable
     }
 
     [Fact]
+    public void Rebuild_reports_where_the_newest_log_last_placed_the_player()
+    {
+        var state = new TrackerState(_db, new WikiNameService(_db, new HttpClient()), new TrackerOptions());
+        state.Rebuild();
+        Assert.Null(state.Current.Health.CurrentLocationId);
+
+        ExecuteSql("UPDATE session SET cur_loc_id = 'older', last_line_ts = '2026-10-13T00:00:00Z' WHERE id = 1");
+        ExecuteSql("INSERT INTO session(id, path, cur_loc_id, last_line_ts) VALUES(2, 'newer.log', 'newer', '2026-10-14T00:00:00Z')");
+        ExecuteSql("INSERT INTO session(id, path, last_line_ts) VALUES(3, 'unplaced.log', '2026-10-15T00:00:00Z')");
+        state.Rebuild();
+
+        Assert.Equal("newer", state.Current.Health.CurrentLocationId);
+    }
+
+    [Fact]
     public async Task Rebuild_publishes_one_complete_snapshot_and_uses_its_captured_options()
     {
         var options = new TrackerOptions

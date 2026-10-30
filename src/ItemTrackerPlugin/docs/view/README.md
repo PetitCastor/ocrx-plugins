@@ -51,17 +51,33 @@ the document in-process (`PostWebMessageAsJson`), wrapped as `{ "type": "ocrx:vi
 the latest one waits for a window not shown yet. There is no data file and no size limit.
 
 The page is plain ES modules (`model.js` pure rules, `render.js` DOM, `main.js` entry). Everything the
-document says reaches the page through `textContent`, never as markup. Tabs: Locations (system,
-station, items), Ships (by model: the logs cannot tell two ships of one model apart), Dropped (search
-leads). Each can be filtered by state and by text; an item opens a detail with its state and why, the
-last time it was seen on screen, and its recent movements. A station the game's text has not named
-yet shows its id.
+document says reaches the page through `textContent`, never as markup. Tabs: Locations, Ships (by
+model: the logs cannot tell two ships of one model apart), Dropped (search leads). Each can be filtered
+by state and by text; an item opens a detail with its state and why, the last time it was seen on
+screen, and its recent movements. A station the game's text has not named yet shows its id.
+
+Locations shows one station at a time, picked from a list of places beside it, grouped by system as
+`inventory-tracker`'s system and place pickers were. A system heading folds its places away, except the
+one on show; with a single system there are no headings. Each place carries its units and a dot when
+something there is in conflict or stale. A filter keeps only the places with a match, each with the
+units that matched, unfolds every system so no match is out of reach, and moves to the first one when the place on show has none; the place picked comes
+back once the filter is cleared. The page opens on the place picked last (kept in the page's
+`localStorage`, which may be missing: the page then works the same), else where the logs last placed
+the player (`here`, marked in the list), else the place something last happened at.
 
 ### The document (`schema` 1)
 
 `ViewData/ViewDocument` is the one place that builds it. `systems[].stations[].items[]`, `ships[]`,
 `dropped[]` carry rows of `name, itemClass, quantity, state, reason, seenAt, lastMove, lastMoveType,
 where, caveats[], history[]`, with up to 8 moves per item.
+
+A station is a place of the catalogue, not a location id: the game re-issues a station's id from time to
+time, and every id that resolves to the same place (`Place.AliasIds`) is one station, keyed by the
+place's canonical id, with its items, counts and latest visit taken across all of them. Each station
+carries `aliasIds[]`, a `name` without the system (the system is its heading), and `lastActivity`, the
+newest move, sighting or visit there. `here` is the place the newest log's `session.cur_loc_id` belongs
+to (`IngestHealth.CurrentLocationId`), or null; it can name somewhere that is not a station, such as open
+space, and the page then ignores it.
 
 Tests: `tests/ItemTrackerPlugin.Tests/ViewDocumentTests.cs` (the document, the shipped page),
 `ViewMessageTests`, `WindowStartupTests`, `CloseNoticeTests` (the window's rules, without UI) and
