@@ -17,10 +17,32 @@ public sealed class TrackerWindowTests
     }
 
     /// <summary>
-    /// Each size the tray, the title bar and the taskbar ask for at 100-200 % display scaling is drawn for
-    /// that size, so none is scaled from another — a scaled one is what came out blurry. The 256 px frame
-    /// is a PNG for Explorer's view of the executable; System.Drawing skips PNG frames, so it is not here.
+    /// The file carries a frame of its own for each size the tray, the title bar and the taskbar ask for at
+    /// 100-200 % display scaling, and 256 px for Explorer: none has to be scaled from another, which is
+    /// what came out blurry. Read from the icon directory, since System.Drawing reports a requested size
+    /// whether or not a frame of that size exists.
     /// </summary>
+    [Fact]
+    public void The_icon_file_has_a_frame_for_each_size()
+    {
+        using var stream = typeof(ItemTracker).Assembly.GetManifestResourceStream(TrackerWindow.IconResource)!;
+        using var reader = new BinaryReader(stream);
+        reader.ReadUInt16();
+        Assert.Equal(1, reader.ReadUInt16());
+        var count = reader.ReadUInt16();
+
+        var sizes = new List<int>();
+        for (var i = 0; i < count; i++)
+        {
+            int width = reader.ReadByte();
+            reader.ReadBytes(15);
+            sizes.Add(width == 0 ? 256 : width);
+        }
+
+        Assert.Equal([16, 20, 24, 32, 40, 48, 64, 256], sizes);
+    }
+
+    /// <summary>Each small frame loads at its size. The 256 px one is a PNG, which System.Drawing skips.</summary>
     [Theory]
     [InlineData(16)]
     [InlineData(20)]
@@ -37,7 +59,7 @@ public sealed class TrackerWindowTests
     }
 
     [Fact]
-    public void The_window_gets_the_icon_with_every_size_not_the_tray_one()
+    public void Loading_with_no_size_keeps_the_large_frames()
     {
         using var all = TrackerWindow.LoadIcon(size: null);
 
