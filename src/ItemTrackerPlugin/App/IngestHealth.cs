@@ -36,6 +36,10 @@ public sealed record IngestHealth(
     /// <summary>Discovered rotated backups not fully ingested yet.</summary>
     public int IncompleteFiles { get; init; }
 
+    /// <summary>Where the player last stood, by the newest log that tracked it: the location id the
+    /// view opens on. Null before any log has placed the player.</summary>
+    public string? CurrentLocationId { get; init; }
+
     public static readonly IngestHealth Empty = new(
         LogDir: "",
         InceptionDate: null,

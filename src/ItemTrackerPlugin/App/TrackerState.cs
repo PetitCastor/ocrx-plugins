@@ -167,7 +167,20 @@ public sealed class TrackerState(
         movesCmd.CommandText = "SELECT COUNT(*) FROM move";
         var moves = Convert.ToInt64(movesCmd.ExecuteScalar(), CultureInfo.InvariantCulture);
 
+        // Each file keeps where the player stood at its watermark; the newest file's is the latest.
+        using var hereCmd = cn.CreateCommand();
+        hereCmd.CommandText = """
+            SELECT cur_loc_id FROM session
+            WHERE cur_loc_id IS NOT NULL
+            ORDER BY last_line_ts DESC, id DESC
+            LIMIT 1
+            """;
+        var here = hereCmd.ExecuteScalar() as string;
+
         return new IngestHealth(
-            logDir, inceptionDate, logFiles, filesWithLines, moves, unrecognised, newestLogLine);
+            logDir, inceptionDate, logFiles, filesWithLines, moves, unrecognised, newestLogLine)
+        {
+            CurrentLocationId = here,
+        };
     }
 }

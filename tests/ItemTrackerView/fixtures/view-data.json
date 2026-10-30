@@ -1,18 +1,45 @@
 {
   "schema": 1,
   "builtAt": "2026-10-29T12:00:00Z",
-  "counts": { "verified": 4, "deduced": 3, "stale": 1, "conflict": 2 },
-  "ledger": { "moves": 812, "logFiles": 14, "newestLogLine": "2026-10-29T11:58:03Z" },
+  "counts": {
+    "verified": 4,
+    "deduced": 3,
+    "stale": 1,
+    "conflict": 2
+  },
+  "ledger": {
+    "moves": 812,
+    "logFiles": 14,
+    "newestLogLine": "2026-10-29T11:58:03Z"
+  },
+  "here": "3058615591",
   "systems": [
     {
       "name": "Nyx",
       "stations": [
         {
           "id": "3058615591",
-          "name": "Keeger — Nyx Social (Nyx)",
+          "aliasIds": [
+            "3058615591",
+            "4005457614"
+          ],
+          "name": "Keeger — Nyx Social",
           "resolved": true,
-          "counts": { "verified": 3, "deduced": 1, "stale": 0, "conflict": 1 },
-          "coverage": { "at": "2026-10-28T19:28:07Z", "pagesSeen": 3, "pages": 5, "observedItems": 17, "freightTotal": 40, "complete": false },
+          "counts": {
+            "verified": 3,
+            "deduced": 1,
+            "stale": 0,
+            "conflict": 1
+          },
+          "lastActivity": "2026-10-28T19:28:07Z",
+          "coverage": {
+            "at": "2026-10-28T19:28:07Z",
+            "pagesSeen": 3,
+            "pages": 5,
+            "observedItems": 17,
+            "freightTotal": 40,
+            "complete": false
+          },
           "items": [
             {
               "name": "CF-227 Badger Repeater",
@@ -26,7 +53,14 @@
               "where": "Keeger",
               "caveats": [],
               "history": [
-                { "at": "2026-10-21T18:00:00Z", "type": "Store", "from": "your character", "to": "Keeger — Nyx Social (Nyx)", "amount": 1, "result": "succeed" }
+                {
+                  "at": "2026-10-21T18:00:00Z",
+                  "type": "Store",
+                  "from": "your character",
+                  "to": "Keeger — Nyx Social (Nyx)",
+                  "amount": 1,
+                  "result": "succeed"
+                }
               ]
             },
             {
@@ -39,7 +73,9 @@
               "lastMove": "2026-10-21T18:00:00Z",
               "lastMoveType": "Store",
               "where": "Keeger",
-              "caveats": ["the game never confirmed the move that put it here"],
+              "caveats": [
+                "the game never confirmed the move that put it here"
+              ],
               "history": []
             },
             {
@@ -54,7 +90,14 @@
               "where": "in a backpack → Keeger",
               "caveats": [],
               "history": [
-                { "at": "2026-10-21T18:00:00Z", "type": "Move", "from": "a container", "to": "a container", "amount": 1, "result": null }
+                {
+                  "at": "2026-10-21T18:00:00Z",
+                  "type": "Move",
+                  "from": "a container",
+                  "to": "a container",
+                  "amount": 1,
+                  "result": null
+                }
               ]
             },
             {
@@ -71,6 +114,37 @@
               "history": []
             }
           ]
+        },
+        {
+          "id": "141810852",
+          "aliasIds": [
+            "141810852"
+          ],
+          "name": "Levski",
+          "resolved": true,
+          "counts": {
+            "verified": 0,
+            "deduced": 1,
+            "stale": 0,
+            "conflict": 0
+          },
+          "lastActivity": "2026-10-18T09:00:00Z",
+          "coverage": null,
+          "items": [
+            {
+              "name": "Pembroke Helmet",
+              "itemClass": "rrs_pembroke_helmet_01",
+              "quantity": 1,
+              "state": "deduced",
+              "reason": "Stored 18 Oct, not seen on screen since",
+              "seenAt": null,
+              "lastMove": "2026-10-18T09:00:00Z",
+              "lastMoveType": "Store",
+              "where": "Levski",
+              "caveats": [],
+              "history": []
+            }
+          ]
         }
       ]
     },
@@ -79,9 +153,18 @@
       "stations": [
         {
           "id": "999000111",
+          "aliasIds": [
+            "999000111"
+          ],
           "name": "location 999000111",
           "resolved": false,
-          "counts": { "verified": 0, "deduced": 0, "stale": 1, "conflict": 0 },
+          "counts": {
+            "verified": 0,
+            "deduced": 0,
+            "stale": 1,
+            "conflict": 0
+          },
+          "lastActivity": "2026-09-25T10:00:00Z",
           "coverage": null,
           "items": [
             {
