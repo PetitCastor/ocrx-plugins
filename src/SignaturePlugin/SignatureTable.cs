@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace SignaturePlugin;
 
-/// <summary>Data-driven mapping from one-ore RS signatures to ore clusters.</summary>
+/// <summary>Data-driven mapping from unit RS signatures — one ore, one debris panel — to clusters.</summary>
 public sealed class SignatureTable
 {
     private const string ConfigDirectoryName = "OCRX";
@@ -10,12 +10,13 @@ public sealed class SignatureTable
     private const string FileName = "signature-table.json";
     private const string ResourceName = "SignaturePlugin.Resources.signature-table.json";
     private const int MaximumClusterCount = 6;
+    private const string DefaultKind = "ore";
     // JSON decimal values are represented as doubles. This admits the rounding noise from two
     // equivalent subtractions without confusing genuinely distinct cluster totals for a tie.
     private const double TieRelativeTolerance = 1e-12;
-    private readonly IReadOnlyList<(string Name, double UnitSignature)> _entries;
+    private readonly IReadOnlyList<(string Name, string Kind, double UnitSignature)> _entries;
 
-    private SignatureTable(IReadOnlyList<(string Name, double UnitSignature)> entries)
+    private SignatureTable(IReadOnlyList<(string Name, string Kind, double UnitSignature)> entries)
         => _entries = entries;
 
     /// <summary>Loads the checked-in community-reference table embedded in the plugin.</summary>
@@ -34,24 +35,21 @@ public sealed class SignatureTable
 
     /// <summary>
     /// Loads the user-editable table, creating it from the embedded defaults on first run.
-    /// Existing files are never rewritten, including files that contain invalid JSON.
+    /// An existing file only ever gains the default entries added since it was last stamped
+    /// (<see cref="SignatureTableSeed"/>); its own entries are never rewritten, and a file that
+    /// contains invalid JSON is not touched at all.
     /// </summary>
     public static SignatureTable LoadUserFile() => LoadOrCreate(GetUserFilePath());
 
     /// <summary>
     /// Loads a table from <paramref name="path"/>, creating that file from the embedded defaults
-    /// when it does not yet exist.
+    /// when it does not yet exist and adding newer default entries when it does.
     /// </summary>
     public static SignatureTable LoadOrCreate(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        if (!File.Exists(path))
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-            File.WriteAllText(path, ReadEmbeddedJson());
-        }
-
+        SignatureTableSeed.Ensure(path, ReadEmbeddedJson());
         return LoadFrom(path);
     }
 
@@ -72,7 +70,8 @@ public sealed class SignatureTable
     }
 
     /// <summary>
-    /// Matches the closest one-to-six-ore cluster derived from the listed unit signatures.
+    /// Matches the closest one-to-six cluster derived from the listed unit signatures, whatever their
+    /// kind: a debris panel is matched exactly like an ore, and its kind travels with the match.
     /// </summary>
     /// <remarks>
     /// An equal-distance runner-up does not fail the match; it is reported alongside the winner in
@@ -98,6 +97,7 @@ public sealed class SignatureTable
         var found = false;
         var bestDelta = double.PositiveInfinity;
         string? bestName = null;
+        var bestKind = DefaultKind;
         var bestUnitSignature = 0.0;
         var bestResolvedSignature = 0.0;
         var bestCount = 0;
@@ -119,6 +119,7 @@ public sealed class SignatureTable
                     found = true;
                     bestDelta = absoluteDelta;
                     bestName = entry.Name;
+                    bestKind = entry.Kind;
                     bestUnitSignature = entry.UnitSignature;
                     bestResolvedSignature = resolvedSignature;
                     bestCount = count;
@@ -138,7 +139,7 @@ public sealed class SignatureTable
             return false;
         }
 
-        match = new SignatureMatch(bestName, "ore", bestUnitSignature, bestCount,
+        match = new SignatureMatch(bestName, bestKind, bestUnitSignature, bestCount,
             signature - bestResolvedSignature, tiedName, tiedCount);
         return true;
     }
@@ -160,7 +161,7 @@ public sealed class SignatureTable
                 throw new InvalidDataException($"The {source} must contain an 'entries' JSON array.");
             }
 
-            var entries = new List<(string Name, double UnitSignature)>();
+            var entries = new List<(string Name, string Kind, double UnitSignature)>();
             var signatures = new HashSet<double>();
             foreach (var element in entriesElement.EnumerateArray())
             {
@@ -184,13 +185,26 @@ public sealed class SignatureTable
                         $"Each entry in the {source} must have a non-empty name and a positive signature.");
                 }
 
+                // kind is optional so that every table written before debris existed still loads, and
+                // still means what it meant: each of its entries is an ore.
+                var kind = DefaultKind;
+                if (element.TryGetProperty("kind", out var kindElement))
+                {
+                    kind = kindElement.ValueKind == JsonValueKind.String ? kindElement.GetString()! : "";
+                    if (string.IsNullOrWhiteSpace(kind))
+                    {
+                        throw new InvalidDataException(
+                            $"Each entry in the {source} that has a kind must give it as a non-empty string.");
+                    }
+                }
+
                 if (!signatures.Add(signature))
                 {
                     throw new InvalidDataException(
                         $"Each entry in the {source} must have a unique signature; duplicate signature {signature} was found.");
                 }
 
-                entries.Add((name, signature));
+                entries.Add((name, kind, signature));
             }
 
             if (entries.Count == 0)

@@ -82,10 +82,20 @@ corpus, and asserts the emitted observation against the manifest. It also checks
 PNG has exactly one manifest entry.
 
 On first launch, the plugin creates a user-editable default table at
-`%LOCALAPPDATA%\OCRX\SignaturePlugin\signature-table.json`. It preserves that file on
+`%LOCALAPPDATA%\OCRX\SignaturePlugin\signature-table.json`. It preserves that file's entries on
 later launches, so edit it when captured measurements disagree with the shipped defaults. Update
 `Resources/signature-table.json` in the same change only when the new values should become the
 default for future users; note the source or patch context in the PR body.
+
+Each entry has an optional `kind` (`ore` when absent; the debris panel entry is `debris`), which is
+what the emitted `kind` field carries. To ship a new entry to existing installs, not only to first
+runs, give it `"addedIn": N` and raise the table's `tableVersion` to `N`, where `N` is greater than
+the current `tableVersion`. An entry with no `addedIn` reaches first runs only. `SignatureTableSeed`
+adds entries newer than the user file's stamp once, skips any whose signature or name the user
+already lists, and restamps the file, so an entry the user deleted is not re-added. First runs get
+the stamp and no `addedIn` fields. A user file it cannot parse, with a non-integer stamp, or that it
+cannot write is left as it is. Changing the value of an existing entry does not reach existing
+installs, by design, since that would overwrite a user's measurement.
 
 ## Output and overlay internals
 

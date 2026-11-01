@@ -18,7 +18,8 @@ public sealed class SignaturePlugin : IOcrxPlugin
     /// was accepted as Bexalite x5 (200 off) when it was really a misread of Ice x4 at 17200.
     /// <para>
     /// 40 is slack for table drift against a game patch, not for OCR error: it is wide enough that
-    /// every one of the 156 exact grid points in the shipped table still resolves to itself, and tight
+    /// every one of the 162 exact grid points in the shipped table (156 ore, 6 debris) still resolves
+    /// to itself — the nearest ore total to any debris total is 100 away — and tight
     /// enough that the reported 18200 slip (200 off Bexalite x5) no longer resolves to anything.
     /// </para>
     /// <para>
