@@ -1,0 +1,11 @@
+{
+  "tag": "v2.8.0",
+  "channel": "stable",
+  "plugins": [
+    "SignaturePlugin"
+  ],
+  "notes": "SignaturePlugin v2.8.0 reads salvage debris signatures. Debris panels read in multiples of 2000, and the overlay now shows how many panels a signature holds, such as Debris x3, where it used to show nothing. Existing installs get the debris entry added to their signature table once, without losing their own edits. Built on Ocrx.Sdk 2.8.0; tested against engine v2.1.1.",
+  "changes": [
+    "Added: Debris signatures are now recognized, and the overlay shows the number of salvage panels, such as Debris x3."
+  ]
+}
