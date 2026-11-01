@@ -20,6 +20,85 @@ public class SignatureTableTests
         Assert.Equal(6, cluster.Count);
     }
 
+    [Theory]
+    [InlineData(2000, 1)]
+    [InlineData(8000, 4)]
+    [InlineData(12000, 6)]
+    public void LoadEmbedded_MatchesDebrisPanelsWithTheirOwnKind(double signature, int panels)
+    {
+        var table = SignatureTable.LoadEmbedded();
+
+        Assert.True(table.TryMatch(signature, 40, out var debris));
+        Assert.Equal("Debris", debris.Name);
+        Assert.Equal("debris", debris.Kind);
+        Assert.Equal(panels, debris.Count);
+        Assert.Null(debris.AlternateName);
+    }
+
+    // The tolerance is only safe if no two shipped totals sit within it of each other, other than the
+    // one known exact tie (19200). Every grid point — ore and debris — must resolve to its own entry.
+    [Fact]
+    public void LoadEmbedded_EveryExactGridPointResolvesToItself()
+    {
+        using var stream = typeof(SignatureTable).Assembly
+            .GetManifestResourceStream("SignaturePlugin.Resources.signature-table.json")!;
+        var json = System.Text.Json.Nodes.JsonNode.Parse(stream)!;
+        var table = SignatureTable.LoadEmbedded();
+        var points = 0;
+
+        foreach (var entry in json["entries"]!.AsArray())
+        {
+            var name = entry!["name"]!.GetValue<string>();
+            var unit = entry["signature"]!.GetValue<double>();
+            for (var count = 1; count <= 6; count++)
+            {
+                Assert.True(table.TryMatch(unit * count, 40, out var match), $"{name} x{count}");
+                Assert.True(
+                    (match.Name == name && match.Count == count) ||
+                    (match.AlternateName == name && match.AlternateCount == count),
+                    $"{name} x{count} resolved to {match.Cluster}");
+                points++;
+            }
+        }
+
+        Assert.Equal(162, points);
+    }
+
+    [Fact]
+    public void LoadFrom_AnEntryWithoutKindIsAnOre()
+    {
+        var table = LoadTable("{\"entries\":[{\"name\":\"Alpha\",\"signature\":100.0},{\"name\":\"Wreck\",\"kind\":\"debris\",\"signature\":70.0}]}");
+
+        Assert.True(table.TryMatch(100, 0, out var ore));
+        Assert.Equal("ore", ore.Kind);
+        Assert.True(table.TryMatch(140, 0, out var debris));
+        Assert.Equal("debris", debris.Kind);
+    }
+
+    // A table written before debris shipped has no stamp; loading it must add debris once and keep
+    // every ore value the user had, edited or not.
+    [Fact]
+    public void LoadOrCreate_AddsDebrisToATableFromBeforeItShipped()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"signature-table-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(path, "{\"schemaVersion\":3,\"entries\":[{\"name\":\"Bexalite\",\"signature\":3610}]}");
+
+            var table = SignatureTable.LoadOrCreate(path);
+
+            Assert.True(table.TryMatch(3610, 0, out var ore));
+            Assert.Equal("Bexalite", ore.Name);
+            Assert.True(table.TryMatch(4000, 0, out var debris));
+            Assert.Equal("Debris", debris.Name);
+            Assert.Equal(2, debris.Count);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Fact]
     public void LoadEmbedded_DerivesCountsThroughSix()
     {
@@ -158,6 +237,8 @@ public class SignatureTableTests
     [InlineData("{\"entries\":[{\"name\":\"Alpha\",\"signature\":0}]}")]
     [InlineData("{\"entries\":[{\"name\":\"Alpha\",\"signature\":\"100\"}]}")]
     [InlineData("{\"entries\":[{\"name\":\"Alpha\",\"signature\":100,\"count\":1}]}")]
+    [InlineData("{\"entries\":[{\"name\":\"Alpha\",\"kind\":\"\",\"signature\":100}]}")]
+    [InlineData("{\"entries\":[{\"name\":\"Alpha\",\"kind\":1,\"signature\":100}]}")]
     [InlineData("{\"entries\":[{\"name\":\"Alpha\",\"signature\":100},{\"name\":\"Beta\",\"signature\":100}]}")]
     public void LoadFrom_InvalidTableDataThrows(string json)
     {

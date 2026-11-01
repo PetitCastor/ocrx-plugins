@@ -2,7 +2,8 @@
 
 An [OCRX](https://ocrx.org) plugin for Star Citizen mining. It reads the **RS signature number**
 shown in scan mode and tells you, on screen, which ore cluster it is — `Ice x4`, `Bexalite x5`, and
-so on — so you do not have to look the number up.
+so on — or how many salvage panels a debris signature holds (`Debris x3`, one panel per 2000), so you
+do not have to look the number up.
 
 ## Using it
 
@@ -68,9 +69,10 @@ The same file holds the `outputs` list. By default every change of reading (and 
   `config.json`: `lingerMs` must be `0`, otherwise the overlay hides itself a moment after
   appearing and never comes back for that rock; and `template` should be `{cluster}`, otherwise an
   ambiguous total shows only its first candidate.
-- **Wrong ore.** The table of ore signatures is `signature-table.json` in the same folder. It is
-  created on first launch and never overwritten, so you can edit it (then restart the plugin) if a
-  game patch changes the values.
+- **Wrong ore.** The table of ore and debris signatures is `signature-table.json` in the same
+  folder. It is created on first launch and your edits are never overwritten, so you can edit it
+  (then restart the plugin) if a game patch changes the values. An update may add a newly shipped
+  entry to it once; if you delete that entry, it stays deleted.
 - **Still stuck?** Stop the plugin from the tray menu, then run `SignaturePlugin.exe --verbose`
   from its install folder (`%LOCALAPPDATA%\OCRX\plugins\<plugin-id>`) with the engine running. The
   per-tick log shows the raw OCR text, the number parsed from it, and what the table made of it.

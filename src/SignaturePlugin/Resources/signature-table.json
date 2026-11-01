@@ -1,8 +1,9 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
+  "tableVersion": 1,
   "gamePatch": "4.9",
   "dataQuality": "community-reference",
-  "notes": "Each entry is the signature of one ore. The plugin derives cluster signatures by multiplying it by counts one through six. Verify against the live game after patches. On first run the plugin copies this table to %LOCALAPPDATA%\\OCRX\\SignaturePlugin\\signature-table.json, which users may edit.",
+  "notes": "Each entry is the signature of one ore, or of one debris panel (kind debris; an entry with no kind is an ore). The plugin derives cluster signatures by multiplying it by counts one through six. Verify against the live game after patches. On first run the plugin copies this table to %LOCALAPPDATA%\\OCRX\\SignaturePlugin\\signature-table.json, which users may edit. Entries shipped later are added to that copy once; an entry you delete is not added back.",
   "source": {
     "name": "SC Mining Signatures v.1",
     "url": "https://docs.google.com/spreadsheets/d/1QOw9yAc20l88ih4yXft_ev1MPbar_3m9Xk7AXJ1VgKI/edit?gid=1033080128",
@@ -34,6 +35,7 @@
     { "name": "Silicon", "signature": 4255 },
     { "name": "Iron", "signature": 4270 },
     { "name": "Aluminum", "signature": 4285 },
-    { "name": "Ice", "signature": 4300 }
+    { "name": "Ice", "signature": 4300 },
+    { "name": "Debris", "kind": "debris", "signature": 2000, "addedIn": 1 }
   ]
 }

@@ -58,6 +58,24 @@ public class SignaturePluginTests
         Assert.Equal("7200", fields["signature"]);
     }
 
+    // A debris signature is a multiple of 2000 panels, read and displayed through the same {cluster}
+    // placeholder; only kind tells a consumer it is not an ore.
+    [Fact]
+    public async Task Debris_signature_emits_panel_count_with_debris_kind()
+    {
+        var plugin = new SignaturePlugin();
+        var services = new FakePluginServices();
+
+        await Read(plugin, services, "6000");
+
+        var fields = Assert.Single(services.Emitted).Fields;
+        Assert.NotNull(fields);
+        Assert.Equal("Debris", fields["name"]);
+        Assert.Equal("debris", fields["kind"]);
+        Assert.Equal("3", fields["count"]);
+        Assert.Equal("Debris x3", fields["cluster"]);
+    }
+
     // The first reading must still show instantly — the complaint was that the overlay vanished too
     // eagerly, not that it was slow to appear.
     [Fact]
