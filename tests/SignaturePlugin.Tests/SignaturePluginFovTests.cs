@@ -99,6 +99,29 @@ public sealed class SignaturePluginFovTests : IDisposable
         Assert.Contains(services.Logs, line => line.Contains("Star Citizen FOV 67.6728"));
     }
 
+    /// <summary>The scan area grows the FOV-zoomed rect, in either order of arrival.</summary>
+    [Fact]
+    public async Task The_scan_area_stacks_on_the_fov_zoom()
+    {
+        WriteFov(58.7155, Written);
+        var configPath = Path.Combine(_dir, "config.json");
+        File.WriteAllText(configPath, """{ "pipeName": "OCRX.Engine", "roiScale": 150, "outputs": [] }""");
+        var config = PluginConfig.Load<SignaturePluginConfig>(configPath);
+        var plugin = new SignaturePlugin(null, config, configPath)
+        {
+            FovSource = new StarCitizenFovSource(() => [_file], () => _now),
+        };
+        var services = new FakePluginServices();
+        await plugin.OnConnectedAsync(services, default);
+
+        ChangeFov(67.6728);
+        await Tick(plugin, services);
+
+        var pushed = Assert.Single(services.UpdatedRois[^1]);
+        Assert.Equal(RoiScales.Apply(Zoomed(67.6728), 150), pushed);
+        Assert.NotEqual(Zoomed(67.6728), pushed);
+    }
+
     /// <summary>Moving within the floor changes nothing on screen, so nothing is sent.</summary>
     [Fact]
     public async Task A_change_below_the_floor_sends_nothing()

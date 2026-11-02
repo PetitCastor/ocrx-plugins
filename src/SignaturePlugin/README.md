@@ -55,7 +55,7 @@ Raise it if the reading drops out while the badge is on screen; it takes effect 
 
 ### Editing by hand
 
-The settings live in `%LOCALAPPDATA%\OCRX\SignaturePlugin\config.json` as `overlayTheme`, `position`
+The settings live in `%LOCALAPPDATA%\OCRX\SignaturePlugin\config.json` as `overlayTheme`, `position`,
 `overlayScale` (a whole percentage, 50 to 100) and `roiScale` (a whole percentage, 100 to 200), if you prefer a file to the UI (restart the plugin after editing it). The file takes
 lowercase ids: `default`, `citizen` or `retro`, and `topleft`, `topcenter`, `topright`,
 `middleleft`, `center`, `middleright`, `bottomleft`, `bottomcenter` or `bottomright`:

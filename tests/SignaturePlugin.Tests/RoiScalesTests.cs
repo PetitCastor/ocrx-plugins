@@ -41,6 +41,17 @@ public class RoiScalesTests
         Assert.Equal(1440u, grown.Rect.Y + grown.Rect.Height);
     }
 
+    [Fact]
+    public void ARectAtTheTop_GrowsDownOnly()
+    {
+        var top = new RoiSubscription("top", new RoiRect(100, 0, 60, 40), 1.0, RoiKind.Text);
+
+        var grown = RoiScales.Apply(top, 200);
+
+        Assert.Equal(0u, grown.Rect.Y);
+        Assert.Equal(60u, grown.Rect.Height);
+    }
+
     [Theory]
     [InlineData(0, 100)]
     [InlineData(99, 100)]
