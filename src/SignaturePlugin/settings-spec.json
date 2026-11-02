@@ -1,6 +1,15 @@
 {
   "fields": [
     {
+      "id": "overlayScale",
+      "label": "Size (%)",
+      "type": 2,
+      "value": "100",
+      "min": 50,
+      "max": 100,
+      "group": "Overlay"
+    },
+    {
       "id": "overlayTheme",
       "label": "Theme",
       "type": 0,
@@ -31,13 +40,13 @@
       "group": "Overlay"
     },
     {
-      "id": "overlayScale",
-      "label": "Size (%)",
+      "id": "roiScale",
+      "label": "Scan area (%)",
       "type": 2,
       "value": "100",
-      "min": 50,
-      "max": 100,
-      "group": "Overlay"
+      "min": 100,
+      "max": 200,
+      "group": "Detection"
     }
   ]
 }
