@@ -36,4 +36,10 @@
     <None Include="..\..\src\SignaturePlugin\Assets\Fonts\**\*" Link="Assets\Fonts\%(RecursiveDir)%(FileName)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- What Windows OCR read on four real 2560x1440 Star Citizen cockpit captures (2026-11-01): the badge's
+       number and every decoy beside it. CockpitFrame reads it from beside the test assembly. -->
+  <ItemGroup>
+    <None Include="Fixtures\Ocr\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

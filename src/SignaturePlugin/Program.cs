@@ -23,5 +23,11 @@ OverlayPositions.Apply(themedStartup);
 var options = new PluginHostOptions { Config = themedStartup, OverlayFactory = new OverlaySinkFactory() };
 
 // The FOV source moves the counter ROI with Star Citizen's field-of-view slider; see StarCitizenFovZoom.
-var plugin = new SignaturePlugin.SignaturePlugin(table, config, configPath) { FovSource = new StarCitizenFovSource() };
+// The tracker moves it onto the number OCR finds, since the badge travels across the screen as the ship
+// turns; see BadgeTracker. It looks for the number as text, never by colour, so it holds on any ship's HUD.
+var plugin = new SignaturePlugin.SignaturePlugin(table, config, configPath)
+{
+    FovSource = new StarCitizenFovSource(),
+    Tracker = new BadgeTracker(Rois.Counter, value => table.TryMatch(value, SignaturePlugin.SignaturePlugin.MatchTolerance, out _)),
+};
 return await OcrxPluginHost.RunAsync(plugin, args, options);

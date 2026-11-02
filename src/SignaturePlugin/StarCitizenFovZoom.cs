@@ -59,6 +59,12 @@ internal static class StarCitizenFovZoom
         return FloorTan / Math.Tan(effective / 2 * Math.PI / 180);
     }
 
+    /// <summary>A reference-space X coordinate zoomed about the screen centre by <paramref name="factor"/>.</summary>
+    public static double ZoomX(double x, double factor) => CentreX + (x - CentreX) * factor;
+
+    /// <summary>A reference-space Y coordinate zoomed about the screen centre by <paramref name="factor"/>.</summary>
+    public static double ZoomY(double y, double factor) => CentreY + (y - CentreY) * factor;
+
     /// <summary>
     /// <paramref name="roi"/> zoomed about the reference-space screen centre by
     /// <paramref name="factor"/>, with its OCR scale divided by the same factor. The id and kind are

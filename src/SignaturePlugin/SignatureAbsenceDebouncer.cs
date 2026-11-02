@@ -30,8 +30,8 @@ namespace SignaturePlugin;
 internal sealed class SignatureAbsenceDebouncer
 {
     /// <summary>
-    /// Consecutive blank ticks required before an absence is trusted. At the engine's default 500 ms
-    /// scan interval this is a 3 s grace window. The previous 3 (1.5 s) was chosen on the assumption
+    /// Consecutive blank ticks required before an absence is trusted. At the engine's default 250 ms
+    /// scan interval this is a 1.5 s grace window. The previous 3 (0.75 s) was chosen on the assumption
     /// that misreads are independent per frame; they are not — the same font under the same lighting
     /// misreads the same way for as long as the shot holds, so three in a row was routine and the
     /// overlay kept dying mid-scan.
@@ -40,7 +40,7 @@ internal sealed class SignatureAbsenceDebouncer
 
     /// <summary>
     /// Ticks without a single matched reading after which the overlay is cleared regardless of what
-    /// the crop has been yielding. ~10 s at the default scan interval — long enough that it never
+    /// the crop has been yielding. ~5 s at the default scan interval — long enough that it never
     /// competes with <see cref="ConfirmTicks"/> during normal flicker, short enough to be a backstop
     /// rather than a leak.
     /// </summary>

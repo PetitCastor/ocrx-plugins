@@ -25,9 +25,13 @@ A few things worth knowing:
   `Savrilium x6 / Aslarite x5` rather than guessing.
 - **It stays put on a bad read.** One misread digit will not rename the ore, and a brief blank does
   not hide the overlay. A different value has to be read twice in a row before it replaces the
-  current one, and the overlay only clears after about 3 seconds of blank reads (at the default
-  scan rate). As a backstop it also clears about 10 seconds after the last real match, so a stale
+  current one, and the overlay only clears after about a second and a half of blank reads (at the
+  default scan rate). As a backstop it also clears about 5 seconds after the last real match, so a stale
   value never stays on screen.
+- **It follows the badge.** The number moves across the screen as your ship turns, and the overlay
+  keeps reading it. A badge that first appears far from its usual spot, or that comes back more than
+  about 3 seconds after being lost somewhere else, is only picked up again once it is read near the
+  usual spot.
 - **Everything stays on your machine.** Nothing is sent anywhere.
 
 ## Settings

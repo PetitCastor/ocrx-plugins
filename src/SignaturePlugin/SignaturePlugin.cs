@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
+using Ocrx.Contracts;
 using Ocrx.Sdk;
 using SignaturePluginRois = global::SignaturePlugin.Rois;
 
@@ -31,7 +33,7 @@ public sealed class SignaturePlugin : IOcrxPlugin
     /// that does not repeat.
     /// </para>
     /// </remarks>
-    private const double MatchTolerance = 40;
+    internal const double MatchTolerance = 40;
 
     /// <summary>
     /// Reconnect attempts to ride out before a lost session is allowed to hide the overlay.
@@ -66,13 +68,29 @@ public sealed class SignaturePlugin : IOcrxPlugin
     private IPluginServices? _services;
     private string? _lastObservation;
 
-    // The live counter set: the calibrated rect zoomed for the current Star Citizen FOV. Swapped
-    // whole, never mutated, because the host reads Rois on every connect. _pushedRois is the set the
-    // engine is known to hold; whenever the two differ, the next tick pushes again.
+    // The live ROI set: the calibrated counter zoomed for the current Star Citizen FOV, moved onto
+    // the badge by the tracker when there is one, plus the tracker's search tiles. Swapped whole,
+    // never mutated, because the host reads Rois on every connect. _pushedRois is the set the engine
+    // is known to hold; whenever the two differ, the next tick pushes again.
     private IReadOnlyList<RoiSubscription> _rois = SignaturePluginRois.All;
     private IReadOnlyList<RoiSubscription>? _pushedRois;
     private bool _pushFailing;
     private readonly StarCitizenFovSource? _fov;
+
+    // The calibrated counter as the current FOV zooms it: where the badge is assumed to be until the
+    // tracker has seen it, and what size the tracked rect keeps.
+    private RoiSubscription _zoomedCounter = SignaturePluginRois.Counter;
+
+    // Set by a FOV change, cleared by the push that carries it. A tracker move does not set it: the
+    // badge it follows is still there, and resetting the absence streaks on every move would keep
+    // them from ever running out on a badge that has really gone.
+    private bool _streakResetPending;
+    private BadgeTracker? _tracker;
+
+    // What tracking costs, summarised under --verbose every few seconds. The clock is injectable for tests.
+    private TrackingStats? _stats;
+    private Func<TimeSpan>? _clock;
+    private static readonly long ClockOrigin = Stopwatch.GetTimestamp();
 
     public SignaturePlugin(SignatureTable? table = null) => _table = table ?? SignatureTable.LoadEmbedded();
 
@@ -94,24 +112,134 @@ public sealed class SignaturePlugin : IOcrxPlugin
     /// </summary>
     internal StarCitizenFovSource? FovSource { get => _fov; init => _fov = value; }
 
+    /// <summary>
+    /// Follows the badge across the screen with the counter ROI itself: a Detailed ROI whose every read says where
+    /// the number is, moved only when the number is about to leave it, and — while a number that was being read has
+    /// gone — one search tile now and then (see <see cref="BadgeTracker"/>). Null (unit tests) keeps the counter where
+    /// the FOV puts it. Like the FOV, tracking is off while the engine replays recorded frames: replay parity is
+    /// measured at the calibrated rect.
+    /// </summary>
+    internal BadgeTracker? Tracker { get => _tracker; init => _tracker = value; }
+
+    /// <summary>Monotonic time for the per-window performance summary; tests supply their own.</summary>
+    internal Func<TimeSpan> Clock { get => _clock ??= () => Stopwatch.GetElapsedTime(ClockOrigin); init => _clock = value; }
+
+    private TrackingStats Stats => _stats ??= new TrackingStats(Clock);
+
+    /// <summary>
+    /// The counter's text for this tick. With tracking on it is what <see cref="CounterReader"/> made of the
+    /// Detailed result: the read itself when it is only the number (byte for byte what a Text ROI read), else the
+    /// number word alone — a counter widened to follow the badge takes in the pin icon and a distance line — and
+    /// nothing at all when no word is a credible signature or the rect's edge cut the number. Replay, and a
+    /// plugin without a tracker, read the text as before.
+    /// </summary>
+    private bool TryReadCounter(TickContext ctx, out string text, out CounterReading? reading)
+    {
+        var id = Counter.Id;
+        reading = null;
+        if (_tracker is { LastReading: { }, LastCounterRead: not null } tracker && !ctx.Services.Engine.ReplayMode)
+        {
+            reading = tracker.LastReading;
+            text = reading.Text;
+            return true;
+        }
+
+        return ctx.Tick.TryGetText(id, out text);
+    }
+
+    /// <summary>
+    /// Takes the tick's reading: observed as usual, unless it is a fragment or not a signature at all.
+    /// A fragment (the rect's edge sliced the number: "7,140" for "17,140") is evidence the badge is still there
+    /// but must never become an observation or feed the consensus, so it counts as presence, like a number that
+    /// matches no cluster — it resets the blank run, so it cannot confirm an absence, while the stale-tick
+    /// backstop still bounds how long it can hold the overlay. Text that is not a signature (the distance line
+    /// "15.9km" in a rect widened to follow the badge) says nothing about the number: it counts as blank.
+    /// </summary>
+    private void Observe(TickContext ctx, string text, CounterReading? reading, TriggerKind trigger, bool force)
+    {
+        if (reading is { IsCut: true })
+        {
+            _services = ctx.Services;
+            ctx.Services.LogVerbose($"signature tick: raw='{reading.Raw}' — cut by the counter's {(reading.Cut == CounterCut.Left ? "left" : "right")} edge, not read");
+            ObserveAbsence(ctx, SignatureReading.Unmatched);
+            return;
+        }
+
+        if (reading is { Text.Length: 0, Raw.Length: > 0 })
+        {
+            _services = ctx.Services;
+            ctx.Services.LogVerbose($"signature tick: raw='{reading.Raw}' — no signature in it (ignored)");
+            ObserveAbsence(ctx, SignatureReading.Blank);
+            return;
+        }
+
+        EmitObservation(ctx, text, trigger, force);
+    }
+
     private RoiSubscription Counter => Rois[0];
 
     public async Task OnTickAsync(TickContext ctx, CancellationToken ct)
     {
-        await FollowFovAsync(ctx.Services, ct);
-        if (ctx.Tick.TryGetText(Counter.Id, out var text))
-            EmitObservation(ctx, text, TriggerKind.Auto, false);
+        var started = Stopwatch.GetTimestamp();
+        var scannedIn = _tracker?.State ?? TrackingState.Idle;
+
+        await FollowAsync(ctx.Services, ctx.Tick, ct);
+        if (TryReadCounter(ctx, out var text, out var reading))
+            Observe(ctx, text, reading, TriggerKind.Auto, false);
+
+        RecordTick(ctx, scannedIn, started);
+    }
+
+    /// <summary>Feeds the performance summary: the OCR area this tick carried (the counter, and a search tile
+    /// when there was one) and how long this handler took.</summary>
+    private void RecordTick(TickContext ctx, TrackingState scannedIn, long started)
+    {
+        // The tracker already holds this tick's results when it ran on it; replay reads them again.
+        OcrRegionResult? counter, searched;
+        if (_tracker is not null && !ctx.Services.Engine.ReplayMode)
+            (counter, searched) = (_tracker.LastCounterRead, _tracker.LastTileRead);
+        else
+        {
+            ctx.Tick.TryGetOcr(Counter.Id, out counter);
+            ctx.Tick.TryGetOcr(BadgeTracker.TileId, out searched);
+        }
+
+        double area = 0;
+        var tile = false;
+        if (counter is not null)
+            area += counter.CropWidth * counter.CropHeight;
+        if (searched is not null)
+        {
+            area += searched.CropWidth * searched.CropHeight;
+            tile = true;
+        }
+
+        Stats.Tick(scannedIn, area, tile, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+        if (Stats.TakeSummary() is { } line)
+            ctx.Services.LogVerbose(line);
     }
 
     public async Task OnManualTickAsync(TickContext ctx, CancellationToken ct)
     {
-        // The rect this tick's text was read through, before a FOV change can move it.
+        // The rect this tick's text was read through, before a FOV change or the tracker moves it.
+        // With tracking it can still be a tick or so behind the rect actually read, which moves
+        // ~10 px a tick: the full frame beside it is what shows where the badge really was.
         var counter = Counter;
-        await FollowFovAsync(ctx.Services, ct);
-        if (!ctx.Tick.TryGetText(counter.Id, out var text)) return;
-        EmitObservation(ctx, text, TriggerKind.Manual, true);
+        await FollowAsync(ctx.Services, ctx.Tick, ct);
+        if (!TryReadCounter(ctx, out var text, out var reading)) return;
+        Observe(ctx, text, reading, TriggerKind.Manual, true);
         try
         {
+            // Both are null unless saveDebugFrames is on. The whole frame — about 4 MB a press at 2560x1440 —
+            // only on its own opt-in (dumpFullFrameOnManual): the counter crop is what calibration needs.
+            // It goes first when asked for: it shows where the badge really was, which the crop (the rect the
+            // text was read through, up to a tick behind) cannot.
+            if (_config?.DumpFullFrameOnManual == true)
+            {
+                var frame = await ctx.Services.DumpFrameAsync(null, "signature-frame", ct);
+                if (frame is not null) ctx.Services.LogVerbose($"signature read '{text.Trim()}' — full frame dumped to {frame}");
+            }
+
             var png = await ctx.Services.DumpFrameAsync(counter.Rect, "counter", ct);
             if (png is not null) ctx.Services.LogVerbose($"signature read '{text.Trim()}' — frame dumped to {png}");
         }
@@ -124,28 +252,45 @@ public sealed class SignaturePlugin : IOcrxPlugin
     }
 
     /// <summary>
-    /// Moves the counter ROI when the user changed Star Citizen's FOV since the last check, and
-    /// pushes <see cref="Rois"/> whenever the engine is not known to hold it. Runs on the tick loop
-    /// (and at connect), so it never races itself; <see cref="Rois"/> is swapped before the engine is
-    /// told, so a reconnect in between still subscribes the moved rect. A failed push is retried on
-    /// the next tick instead of being forgotten until the next FOV change. Replay leaves the
-    /// calibrated rect alone: recorded frames were captured at whatever FOV they were captured at.
+    /// Keeps the ROI set right and pushes it whenever the engine is not known to hold it: moves the
+    /// counter when the user changed Star Citizen's FOV since the last check, feeds the tick's OCR search
+    /// tiles to the tracker (<paramref name="tick"/> is null at connect, when there are none yet), and
+    /// pushes <see cref="Rois"/>. Runs on the tick loop (and at connect), so it never races itself;
+    /// <see cref="Rois"/> is swapped before the engine is told, so a reconnect in between still
+    /// subscribes the moved set. A failed push is retried on the next tick instead of being forgotten
+    /// until the next change. Replay leaves the calibrated rect alone: recorded frames were captured
+    /// at whatever FOV and badge position they were captured at.
     /// </summary>
-    private async Task FollowFovAsync(IPluginServices services, CancellationToken ct)
+    private async Task FollowAsync(IPluginServices services, TickData? tick, CancellationToken ct)
     {
-        if (_fov is null || services.Engine.ReplayMode)
+        if ((_fov is null && _tracker is null) || services.Engine.ReplayMode)
             return;
 
-        if (_fov.Poll())
+        if (_fov is not null && _fov.Poll())
         {
+            var factor = StarCitizenFovZoom.Factor(_fov.Current);
             var counter = ZoomedCounter(_fov.Current);
-            if (counter != Counter)
+            if (counter != _zoomedCounter)
             {
-                Volatile.Write(ref _rois, [counter]);
+                _zoomedCounter = counter;
+                _tracker?.Zoom(counter, factor);
+                _streakResetPending = true;
                 services.Log(string.Create(CultureInfo.InvariantCulture,
                     $"Star Citizen FOV {_fov.Current:0.####}° (vertical) — counter ROI now ({counter.Rect.X},{counter.Rect.Y}) {counter.Rect.Width}x{counter.Rect.Height}, scale {counter.Scale:0.##}"));
             }
         }
+
+        if (_tracker is { } tracker)
+        {
+            var engine = services.Engine;
+            tracker.Frame(tick?.FrameWidth ?? engine.FrameWidth, tick?.FrameHeight ?? engine.FrameHeight, engine.ScanInterval);
+            if (tick is not null)
+                tracker.Observe(tick, services);
+        }
+
+        var next = _tracker?.CurrentSet() ?? [_zoomedCounter];
+        if (!next.SequenceEqual(Rois))
+            Volatile.Write(ref _rois, next);
 
         var pending = Rois;
         if (ReferenceEquals(pending, _pushedRois))
@@ -156,8 +301,13 @@ public sealed class SignaturePlugin : IOcrxPlugin
             await services.UpdateRoisAsync(pending, ct);
             _pushedRois = pending;
             _pushFailing = false;
+            Stats.Push();
             // Blank reads through the old rect were a mis-aimed crop, not evidence the badge left.
-            _absence.ResetStreaks();
+            if (_streakResetPending)
+            {
+                _absence.ResetStreaks();
+                _streakResetPending = false;
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -174,7 +324,8 @@ public sealed class SignaturePlugin : IOcrxPlugin
     /// Projects the overlay-theme setting the moment a Track session opens, so the engine's panel has
     /// the current value before the first tick. A plugin built without a config (unit tests) has no
     /// setting to project and stays silent. Then reads Star Citizen's FOV, so the counter rect is
-    /// zoomed right before the first tick of a live session.
+    /// zoomed right before the first tick of a live session. Tracking starts idle, which is the counter
+    /// alone: nothing about it is pushed until a number has been read.
     /// </summary>
     public async Task OnConnectedAsync(IPluginServices services, CancellationToken ct)
     {
@@ -182,7 +333,7 @@ public sealed class SignaturePlugin : IOcrxPlugin
         _pushedRois = Rois;
         if (_config is not null)
             await services.PublishSettingsAsync(BuildSpec(_config), ct);
-        await FollowFovAsync(services, ct);
+        await FollowAsync(services, null, ct);
     }
 
     /// <summary>

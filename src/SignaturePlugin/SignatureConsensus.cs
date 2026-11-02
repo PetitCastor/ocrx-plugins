@@ -36,7 +36,7 @@ internal sealed class SignatureConsensus
 {
     /// <summary>
     /// Consecutive identical readings a new number needs before it replaces the accepted one. Two is
-    /// enough to reject the single-tick slips that cause the flip, and costs one scan interval (500 ms
+    /// enough to reject the single-tick slips that cause the flip, and costs one scan interval (250 ms
     /// by default) of lag when the player genuinely scans a different rock.
     /// </summary>
     /// <remarks>
