@@ -1,0 +1,12 @@
+{
+  "tag": "v2.9.0",
+  "channel": "stable",
+  "plugins": [
+    "SignaturePlugin"
+  ],
+  "notes": "SignaturePlugin v2.9.0 adds an overlay size setting and narrows the default overlay. The size slider needs engine v2.2.0 or later; on an older engine the same setting shows as a number box. Built on Ocrx.Sdk 2.8.0.",
+  "changes": [
+    "Added: A Size setting under Overlay shrinks the whole overlay, text included, down to half its size, with a slider in the plugin settings.",
+    "Changed: The default overlay is narrower, since it was much wider than any reading needs."
+  ]
+}
