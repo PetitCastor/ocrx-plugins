@@ -174,7 +174,9 @@ its clear across dropped ticks and a lost session, so a gap cannot leave an old 
 "overlayTheme": "default"
 ```
 
-- `default` preserves the existing configurable pill unchanged.
+- `default` is the configurable pill. Its width is narrowed from the SDK's 560 px to 420 px, which
+  fits the longest reading the table can produce (the Savrilium/Aslarite tie, ~370 px at 24 pt),
+  but only while `width` is still 560; a width you set by hand is left alone.
 - `citizen` uses a compact navy, cyan-outlined technical pill with diagonal corner tabs.
 - `retro` uses a square-cornered purple arcade pill with one-bit pixel text.
 
@@ -182,6 +184,14 @@ The `citizen` and `retro` presets own their visual settings, including their pac
 back to `default` to keep or manually edit the regular `overlay` properties such as colours, size,
 and padding. The theme selector does not change the template, placement, or edge-driven clearing
 policy.
+
+### Overlay size (config.json)
+
+`overlayScale` is a whole percentage, 50 to 100 (default 100; out-of-range values clamp), applied
+after the theme: width, height, font size, padding, corner radius, corner accents and border width
+scale together (a visible border never drops below 1 px). The anchor offsets do not scale, so the
+overlay keeps its place on screen. The engine's panel shows it as a slider, because the plugin
+declares it as an INT with both a min and a max.
 
 ### Overlay position (config.json)
 

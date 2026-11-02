@@ -14,6 +14,7 @@ var config = PluginConfig.Load<SignaturePluginConfig>(configPath);
 // Theming a clone rather than `config` itself is what keeps the derived dimensions out of the base.
 var themedStartup = config.CloneForSettings<SignaturePluginConfig>(configPath);
 OverlayThemes.Apply(themedStartup);
+OverlayScales.Apply(themedStartup);
 OverlayPositions.Apply(themedStartup);
 
 // The overlay sink lives in the opt-in Ocrx.Sdk.Overlay package, so the core SDK cannot

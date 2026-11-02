@@ -47,16 +47,20 @@ purple pill with pixel text.
 **Position** is where the overlay is anchored on your primary screen. It is independent of the
 theme: changing one never changes the other.
 
+**Size** shrinks the whole overlay — box, text and trim together — down to 50% of its full size.
+It composes with the theme and does not move the overlay: the position stays where you put it.
+
 ### Editing by hand
 
-Both settings live in `%LOCALAPPDATA%\OCRX\SignaturePlugin\config.json` as `overlayTheme` and
-`position`, if you prefer a file to the UI (restart the plugin after editing it). The file takes
+The settings live in `%LOCALAPPDATA%\OCRX\SignaturePlugin\config.json` as `overlayTheme`, `position`
+and `overlayScale` (a whole percentage, 50 to 100), if you prefer a file to the UI (restart the plugin after editing it). The file takes
 lowercase ids: `default`, `citizen` or `retro`, and `topleft`, `topcenter`, `topright`,
 `middleleft`, `center`, `middleright`, `bottomleft`, `bottomcenter` or `bottomright`:
 
 ```json
 "overlayTheme": "citizen",
-"position": "topright"
+"position": "topright",
+"overlayScale": 75
 ```
 
 The same file holds the `outputs` list. By default every change of reading (and every clear) is appended to
