@@ -53,6 +53,7 @@ public sealed class SignaturePlugin : IOcrxPlugin
     private const string OverlayThemeSettingId = "overlayTheme";
     private const string PositionSettingId = "position";
     private const string ScaleSettingId = "overlayScale";
+    private const string RoiScaleSettingId = "roiScale";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SignatureTable _table;
@@ -75,6 +76,11 @@ public sealed class SignaturePlugin : IOcrxPlugin
     private bool _pushFailing;
     private readonly StarCitizenFovSource? _fov;
 
+    // The two things the live counter rect is derived from, besides the calibrated one: the last FOV
+    // read (null until a live session reads one) and the user's ROI size percentage.
+    private double? _fovDegrees;
+    private int _roiScale = RoiScales.Default;
+
     public SignaturePlugin(SignatureTable? table = null) => _table = table ?? SignatureTable.LoadEmbedded();
 
     internal SignaturePlugin(SignatureTable? table, SignaturePluginConfig config, string configPath)
@@ -84,6 +90,11 @@ public sealed class SignaturePlugin : IOcrxPlugin
         _configPath = !string.IsNullOrWhiteSpace(configPath)
             ? configPath
             : throw new ArgumentException("Config path is required.", nameof(configPath));
+
+        // The host subscribes Rois as it stands when the session opens, so the saved size must be in
+        // it before then rather than waiting for the first push.
+        _roiScale = RoiScales.Normalize(config.RoiScale);
+        SetCounter(BuildCounter());
     }
     public string Name => "SignaturePlugin";
     public IReadOnlyList<RoiSubscription> Rois => Volatile.Read(ref _rois);
@@ -139,15 +150,22 @@ public sealed class SignaturePlugin : IOcrxPlugin
 
         if (_fov.Poll())
         {
-            var counter = ZoomedCounter(_fov.Current);
+            _fovDegrees = _fov.Current;
+            var counter = BuildCounter();
             if (counter != Counter)
             {
-                Volatile.Write(ref _rois, [counter]);
+                SetCounter(counter);
                 services.Log(string.Create(CultureInfo.InvariantCulture,
                     $"Star Citizen FOV {_fov.Current:0.####}° (vertical) — counter ROI now ({counter.Rect.X},{counter.Rect.Y}) {counter.Rect.Width}x{counter.Rect.Height}, scale {counter.Scale:0.##}"));
             }
         }
 
+        await PushPendingRoisAsync(services, ct);
+    }
+
+    /// <summary>Tells the engine about <see cref="Rois"/> when it is not known to hold them.</summary>
+    private async Task PushPendingRoisAsync(IPluginServices services, CancellationToken ct)
+    {
         var pending = Rois;
         if (ReferenceEquals(pending, _pushedRois))
             return;
@@ -168,8 +186,17 @@ public sealed class SignaturePlugin : IOcrxPlugin
         }
     }
 
-    private static RoiSubscription ZoomedCounter(double? verticalFov)
-        => StarCitizenFovZoom.Apply(SignaturePluginRois.Counter, StarCitizenFovZoom.Factor(verticalFov));
+    /// <summary>The calibrated counter, zoomed for the last FOV read and then grown by the user's ROI size.
+    /// Both leave the calibrated subscription untouched at their defaults.</summary>
+    private RoiSubscription BuildCounter()
+        => RoiScales.Apply(
+            StarCitizenFovZoom.Apply(SignaturePluginRois.Counter, StarCitizenFovZoom.Factor(_fovDegrees)),
+            _roiScale);
+
+    /// <summary>Swaps the live set. The calibrated one keeps its shared <see cref="SignaturePluginRois.All"/>
+    /// instance, so a plugin that never moves the rect still serves exactly what it always did.</summary>
+    private void SetCounter(RoiSubscription counter)
+        => Volatile.Write(ref _rois, ReferenceEquals(counter, SignaturePluginRois.Counter) ? SignaturePluginRois.All : [counter]);
 
     /// <summary>
     /// Projects the overlay-theme setting the moment a Track session opens, so the engine's panel has
@@ -203,7 +230,9 @@ public sealed class SignaturePlugin : IOcrxPlugin
             string.Equals(value.Id, PositionSettingId, StringComparison.Ordinal));
         var scaleEdit = apply.Values.FirstOrDefault(value =>
             string.Equals(value.Id, ScaleSettingId, StringComparison.Ordinal));
-        if (themeEdit is null && positionEdit is null && scaleEdit is null)
+        var roiScaleEdit = apply.Values.FirstOrDefault(value =>
+            string.Equals(value.Id, RoiScaleSettingId, StringComparison.Ordinal));
+        if (themeEdit is null && positionEdit is null && scaleEdit is null && roiScaleEdit is null)
             // None of the ids is one this plugin owns — the engine forwarded an edit that is not ours.
             // Nothing to do; never happens in practice but a no-op is the correct answer.
             return;
@@ -245,10 +274,21 @@ public sealed class SignaturePlugin : IOcrxPlugin
             }
         }
 
+        var roiScale = RoiScales.Normalize(_config.RoiScale);
+        if (roiScaleEdit is not null)
+        {
+            if (!RoiScales.TryParse(roiScaleEdit.Value, out roiScale))
+            {
+                services.Log($"SignaturePlugin: ignoring unknown scan area size '{roiScaleEdit.Value}'.");
+                return;
+            }
+        }
+
         var themeChanged = !string.Equals(theme, OverlayThemes.Normalize(_config.OverlayTheme), StringComparison.Ordinal);
         var positionChanged = !string.Equals(position, OverlayPositions.Normalize(_config.Position), StringComparison.Ordinal);
         var scaleChanged = scale != OverlayScales.Normalize(_config.OverlayScale);
-        if (!themeChanged && !positionChanged && !scaleChanged)
+        var roiScaleChanged = roiScale != RoiScales.Normalize(_config.RoiScale);
+        if (!themeChanged && !positionChanged && !scaleChanged && !roiScaleChanged)
         {
             // Nothing actually changed — a same-value re-apply. Republish so the panel reflects the
             // current value, but do not rebuild — tearing down and re-drawing the overlay for a no-op
@@ -265,6 +305,7 @@ public sealed class SignaturePlugin : IOcrxPlugin
         edited.OverlayTheme = theme;
         edited.Position = position;
         edited.OverlayScale = scale;
+        edited.RoiScale = roiScale;
         OverlayThemes.Apply(edited);
         OverlayScales.Apply(edited);
         OverlayPositions.Apply(edited);
@@ -277,25 +318,38 @@ public sealed class SignaturePlugin : IOcrxPlugin
         // on the next apply — _config is still the old values, so a change branch fires again — and
         // undoing it would mean a rollback inside the host's rebuild, which is not worth it for a
         // window this narrow.
-        await services.RebuildOutputsAsync(edited, ct);
+        if (themeChanged || positionChanged || scaleChanged)
+        {
+            await services.RebuildOutputsAsync(edited, ct);
 
-        // The rebuild just swapped in a fresh, not-yet-shown overlay window. Auto ticks only emit on a
-        // changed reading (see EmitObservation's dedupe against _lastObservation), so without this the
-        // new window would stay blank until the on-screen signature actually changed — the overlay
-        // would look like it vanished for as long as the same ore sat on screen. Clearing the cache
-        // forces the very next tick's reading through even if it is identical to the last one shown.
-        _lastObservation = null;
+            // The rebuild just swapped in a fresh, not-yet-shown overlay window. Auto ticks only emit on a
+            // changed reading (see EmitObservation's dedupe against _lastObservation), so without this the
+            // new window would stay blank until the on-screen signature actually changed — the overlay
+            // would look like it vanished for as long as the same ore sat on screen. Clearing the cache
+            // forces the very next tick's reading through even if it is identical to the last one shown.
+            _lastObservation = null;
+        }
 
         await services.PublishSettingsAsync(BuildSpec(edited), ct);
+
+        // The scan area only moves the engine's crop, never the overlay, so it is pushed on its own and
+        // never rebuilds anything. A failed push is retried by the tick loop like a FOV change's.
+        if (roiScaleChanged)
+        {
+            _roiScale = roiScale;
+            SetCounter(BuildCounter());
+            await PushPendingRoisAsync(services, ct);
+        }
 
         _config.OverlayTheme = theme;
         _config.Position = position;
         _config.OverlayScale = scale;
+        _config.RoiScale = roiScale;
         _config.Save(_configPath);
     }
 
     /// <summary>
-    /// Builds the effective spec: two SELECT fields whose options come straight from
+    /// Builds the effective spec: the size slider first, under the Overlay heading, then two SELECT fields whose options come straight from
     /// <see cref="OverlayThemes.Options"/>/<see cref="OverlayPositions.Options"/> so they cannot drift
     /// from what can actually be applied, and whose values are the config's current theme and position
     /// in canonical form, plus the size as an INT bounded by <see cref="OverlayScales"/> (which the
@@ -303,6 +357,14 @@ public sealed class SignaturePlugin : IOcrxPlugin
     /// </summary>
     private static SettingsSpec BuildSpec(SignaturePluginConfig config) =>
         new([
+            new SettingsField(
+                Id: ScaleSettingId,
+                Label: "Size (%)",
+                Type: SettingsFieldType.Int,
+                Value: OverlayScales.Normalize(config.OverlayScale).ToString(CultureInfo.InvariantCulture),
+                Min: OverlayScales.Min,
+                Max: OverlayScales.Max,
+                Group: "Overlay"),
             new SettingsField(
                 Id: OverlayThemeSettingId,
                 Label: "Theme",
@@ -318,13 +380,13 @@ public sealed class SignaturePlugin : IOcrxPlugin
                 Options: OverlayPositions.Options,
                 Group: "Overlay"),
             new SettingsField(
-                Id: ScaleSettingId,
-                Label: "Size (%)",
+                Id: RoiScaleSettingId,
+                Label: "Scan area (%)",
                 Type: SettingsFieldType.Int,
-                Value: OverlayScales.Normalize(config.OverlayScale).ToString(CultureInfo.InvariantCulture),
-                Min: OverlayScales.Min,
-                Max: OverlayScales.Max,
-                Group: "Overlay"),
+                Value: RoiScales.Normalize(config.RoiScale).ToString(CultureInfo.InvariantCulture),
+                Min: RoiScales.Min,
+                Max: RoiScales.Max,
+                Group: "Detection"),
         ]);
 
     public void OnSessionEvent(SessionEvent evt)

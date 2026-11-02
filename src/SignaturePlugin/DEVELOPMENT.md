@@ -193,6 +193,15 @@ scale together (a visible border never drops below 1 px). The anchor offsets do 
 overlay keeps its place on screen. The engine's panel shows it as a slider, because the plugin
 declares it as an INT with both a min and a max.
 
+### Scan area (config.json)
+
+`roiScale` is a whole percentage, 100 to 200 (default 100; out-of-range values clamp), that grows the
+counter ROI to the right and symmetrically up and down, so a badge that drifts off the calibrated crop
+still lands inside it. The left edge never moves: the pin icon sits just left of the digits, and a crop
+that reaches it gets the icon read as a character. It stacks on the Star Citizen FOV zoom, keeps the OCR scale, and is held inside the 2560x1440 reference
+space. A change is pushed to the engine with `UpdateRoisAsync` and never rebuilds the overlay. A larger
+crop costs OCR time and lets neighbouring HUD text in, so it is a tolerance knob, not a default.
+
 ### Overlay position (config.json)
 
 `position` selects where the overlay is anchored on the primary screen, in

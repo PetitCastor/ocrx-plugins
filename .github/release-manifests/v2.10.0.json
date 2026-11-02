@@ -1,0 +1,12 @@
+{
+  "tag": "v2.10.0",
+  "channel": "stable",
+  "plugins": [
+    "SignaturePlugin"
+  ],
+  "notes": "SignaturePlugin v2.10.0 adds a Scan area setting. It is an experiment: a quick attempt, with little confidence that it speeds up capture. Resizing the scan area should mainly help on oversized screens. Built on Ocrx.Sdk 2.8.0.",
+  "changes": [
+    "Added: A Scan area setting under Detection enlarges the region read for the signature number up to twice its size, growing right, up and down but never left, where the pin icon sits.",
+    "Added: The Scan area is an experiment, a quick attempt with little confidence of speeding up capture; it should mainly help on oversized screens."
+  ]
+}

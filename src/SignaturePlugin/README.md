@@ -50,10 +50,13 @@ theme: changing one never changes the other.
 **Size** shrinks the whole overlay — box, text and trim together — down to 50% of its full size.
 It composes with the theme and does not move the overlay: the position stays where you put it.
 
+**Scan area** enlarges the region read for the signature number, up to twice the default size, to the right, up and down (never to the left, where the pin icon is).
+Raise it if the reading drops out while the badge is on screen; it takes effect at once.
+
 ### Editing by hand
 
-The settings live in `%LOCALAPPDATA%\OCRX\SignaturePlugin\config.json` as `overlayTheme`, `position`
-and `overlayScale` (a whole percentage, 50 to 100), if you prefer a file to the UI (restart the plugin after editing it). The file takes
+The settings live in `%LOCALAPPDATA%\OCRX\SignaturePlugin\config.json` as `overlayTheme`, `position`,
+`overlayScale` (a whole percentage, 50 to 100) and `roiScale` (a whole percentage, 100 to 200), if you prefer a file to the UI (restart the plugin after editing it). The file takes
 lowercase ids: `default`, `citizen` or `retro`, and `topleft`, `topcenter`, `topright`,
 `middleleft`, `center`, `middleright`, `bottomleft`, `bottomcenter` or `bottomright`:
 

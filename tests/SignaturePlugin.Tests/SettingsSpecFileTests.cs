@@ -28,6 +28,21 @@ public class SettingsSpecFileTests
         Assert.Equal(OverlayScales.Default.ToString(), shipped.GetProperty("value").GetString());
     }
 
+    [Fact]
+    public void ShippedSpec_RoiScale_MatchesTheLiveField()
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "settings-spec.json")));
+        var shipped = doc.RootElement.GetProperty("fields").EnumerateArray()
+            .Single(f => f.GetProperty("id").GetString() == "roiScale");
+
+        Assert.Equal((int)SettingsFieldType.Int, shipped.GetProperty("type").GetInt32());
+        Assert.Equal("Scan area (%)", shipped.GetProperty("label").GetString());
+        Assert.Equal("Detection", shipped.GetProperty("group").GetString());
+        Assert.Equal(RoiScales.Min, shipped.GetProperty("min").GetDouble());
+        Assert.Equal(RoiScales.Max, shipped.GetProperty("max").GetDouble());
+        Assert.Equal(RoiScales.Default.ToString(), shipped.GetProperty("value").GetString());
+    }
+
     // settings-spec.json is what the engine shows before the plugin connects; once connected it shows
     // the live spec built from the same Options lists. A label that differs between the two flips in
     // the UI the moment the plugin starts.

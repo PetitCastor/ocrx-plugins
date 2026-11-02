@@ -1,3 +1,4 @@
+using Ocrx.Contracts;
 using Ocrx.Sdk;
 using Ocrx.Sdk.Testing;
 using Xunit;
@@ -19,7 +20,7 @@ public class SignaturePluginSettingsTests
         await plugin.OnConnectedAsync(services, default);
 
         var fields = Assert.Single(services.Published).Fields;
-        Assert.Equal(3, fields.Count);
+        Assert.Equal(4, fields.Count);
 
         var theme = fields.Single(field => field.Id == "overlayTheme");
         Assert.Equal(SettingsFieldType.Select, theme.Type);
@@ -40,6 +41,62 @@ public class SignaturePluginSettingsTests
         Assert.Equal("100", size.Value);
         Assert.Equal(50, size.Min);
         Assert.Equal(100, size.Max);
+
+        var scanArea = fields.Single(field => field.Id == "roiScale");
+        Assert.Equal(SettingsFieldType.Int, scanArea.Type);
+        Assert.Equal("100", scanArea.Value);
+        Assert.Equal(100, scanArea.Min);
+        Assert.Equal(200, scanArea.Max);
+    }
+
+    [Fact]
+    public async Task Scan_area_edit_grows_the_counter_rect_pushes_it_and_leaves_the_overlay_alone()
+    {
+        var (config, path) = TempConfig(OverlayThemes.Default);
+        var plugin = new SignaturePlugin(null, config, path);
+        var services = new FakePluginServices();
+
+        await plugin.OnApplySettings(ApplyValue("roiScale", "150"), services, default);
+
+        var pushed = Assert.Single(Assert.Single(services.UpdatedRois));
+        Assert.Equal(new RoiRect(1264, 443, 105, 66), pushed.Rect);
+        Assert.Equal(Rois.Counter.Scale, pushed.Scale);
+        Assert.Same(services.UpdatedRois[0], plugin.Rois);
+        Assert.Empty(services.Rebuilt); // the overlay window is not torn down for a crop change
+        Assert.Equal("150", Assert.Single(services.Published).Fields.Single(f => f.Id == "roiScale").Value);
+        Assert.Equal(150, PluginConfig.Load<SignaturePluginConfig>(path).RoiScale);
+
+        await plugin.OnApplySettings(ApplyValue("roiScale", "100"), services, default);
+        Assert.Equal(Rois.Counter, Assert.Single(services.UpdatedRois[1]));
+    }
+
+    [Fact]
+    public void A_saved_scan_area_is_in_the_rect_the_host_subscribes_at_connect()
+    {
+        var (config, path) = TempConfig(OverlayThemes.Default);
+        config.RoiScale = 125;
+
+        var plugin = new SignaturePlugin(null, config, path);
+
+        Assert.Equal(RoiScales.Apply(Rois.Counter, 125), Assert.Single(plugin.Rois));
+    }
+
+    [Theory]
+    [InlineData("99")]
+    [InlineData("201")]
+    [InlineData("abc")]
+    [InlineData("")]
+    public async Task Scan_area_outside_the_slider_range_is_rejected(string value)
+    {
+        var (config, path) = TempConfig(OverlayThemes.Default);
+        var plugin = new SignaturePlugin(null, config, path);
+        var services = new FakePluginServices();
+
+        await plugin.OnApplySettings(ApplyValue("roiScale", value), services, default);
+
+        Assert.Empty(services.UpdatedRois);
+        Assert.Empty(services.Published);
+        Assert.Equal(100, PluginConfig.Load<SignaturePluginConfig>(path).RoiScale);
     }
 
     [Fact]
@@ -372,6 +429,8 @@ public class SignaturePluginSettingsTests
         TickContext.ForTesting(new TickDataBuilder().Text("counter", counterText).Build(), services);
 
     private static ApplySettings Apply(string theme) => new([new SettingsValue("overlayTheme", theme)]);
+
+    private static ApplySettings ApplyValue(string id, string value) => new([new SettingsValue(id, value)]);
 
     private static ApplySettings ApplyScale(string percent) => new([new SettingsValue("overlayScale", percent)]);
 
