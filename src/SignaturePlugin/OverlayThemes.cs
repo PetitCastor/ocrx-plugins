@@ -9,6 +9,9 @@ internal static class OverlayThemes
     public const string Citizen = "citizen";
     public const string Retro = "retro";
 
+    private const int SdkDefaultWidth = 560;
+    private const int DefaultWidth = 420;
+
     /// <summary>
     /// The selectable themes and their display labels — the single source the settings spec is
     /// generated from, so the projected option list can never drift from what <see cref="Apply"/>
@@ -43,6 +46,8 @@ internal static class OverlayThemes
         switch (theme)
         {
             case Default:
+                if (overlay is not null)
+                    ApplyDefault(overlay);
                 return;
             case Citizen:
                 if (overlay is not null)
@@ -59,9 +64,21 @@ internal static class OverlayThemes
         }
     }
 
+    /// <summary>
+    /// The SDK's pill is 560 px wide, far more than any reading needs: the longest one the table can
+    /// produce, the Savrilium/Aslarite tie, measures about 370 px at the default font. Narrow it, but
+    /// only when the width is still the SDK default that every saved config carries — a width the user
+    /// set by hand is theirs and stays as it is.
+    /// </summary>
+    private static void ApplyDefault(OverlaySpec overlay)
+    {
+        if (overlay.Width == SdkDefaultWidth)
+            overlay.Width = DefaultWidth;
+    }
+
     private static void ApplyCitizen(OverlaySpec overlay)
     {
-        overlay.Width = 560;
+        overlay.Width = 450;
         overlay.Height = 76;
         overlay.FontFamily = "Rajdhani SemiBold";
         overlay.FontFile = FontPath("Rajdhani-SemiBold.ttf");

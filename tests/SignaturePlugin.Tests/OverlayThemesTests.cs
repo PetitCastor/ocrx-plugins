@@ -31,11 +31,20 @@ public class OverlayThemesTests
     }
 
     [Fact]
+    public void Default_NarrowsTheUntouchedSdkWidthToFitTheLongestReading()
+    {
+        var overlay = Apply(OverlayThemes.Default);
+
+        Assert.Equal(420, overlay.Width);
+        Assert.Equal(88, overlay.Height);
+    }
+
+    [Fact]
     public void Citizen_AppliesTheOutlinedTechnicalPill()
     {
         var overlay = Apply(OverlayThemes.Citizen);
 
-        Assert.Equal(560, overlay.Width);
+        Assert.Equal(450, overlay.Width);
         Assert.Equal(76, overlay.Height);
         Assert.Equal(28, overlay.FontSize);
         Assert.NotNull(overlay.FontFile);

@@ -19,7 +19,7 @@ public class SignaturePluginSettingsTests
         await plugin.OnConnectedAsync(services, default);
 
         var fields = Assert.Single(services.Published).Fields;
-        Assert.Equal(2, fields.Count);
+        Assert.Equal(3, fields.Count);
 
         var theme = fields.Single(field => field.Id == "overlayTheme");
         Assert.Equal(SettingsFieldType.Select, theme.Type);
@@ -33,6 +33,73 @@ public class SignaturePluginSettingsTests
         Assert.Equal(OverlayPositions.TopCenter, position.Value);
         Assert.NotNull(position.Options);
         Assert.Equal(9, position.Options.Count);
+
+        // The size is a bounded INT — what the engine draws as a slider — carrying the current percentage.
+        var size = fields.Single(field => field.Id == "overlayScale");
+        Assert.Equal(SettingsFieldType.Int, size.Type);
+        Assert.Equal("100", size.Value);
+        Assert.Equal(50, size.Min);
+        Assert.Equal(100, size.Max);
+    }
+
+    [Fact]
+    public async Task Size_edit_shrinks_the_live_overlay_and_persists_only_the_percentage()
+    {
+        var (config, path) = TempConfig(OverlayThemes.Default);
+        var plugin = new SignaturePlugin(null, config, path);
+        var services = new FakePluginServices();
+
+        await plugin.OnApplySettings(ApplyScale("50"), services, default);
+
+        var rebuilt = Overlay(Assert.IsType<SignaturePluginConfig>(Assert.Single(services.Rebuilt)));
+        Assert.Equal(210, rebuilt.Width);
+        Assert.Equal(44, rebuilt.Height);
+        Assert.Equal(12, rebuilt.FontSize);
+        Assert.Equal("50", ScaleField(services).Value);
+
+        // The base overlay on disk keeps its full size, so moving the slider back up restores it.
+        var reloaded = PluginConfig.Load<SignaturePluginConfig>(path);
+        Assert.Equal(50, reloaded.OverlayScale);
+        Assert.Equal(560, Overlay(reloaded).Width);
+        Assert.Equal(88, Overlay(reloaded).Height);
+
+        await plugin.OnApplySettings(ApplyScale("100"), services, default);
+        Assert.Equal(420, Overlay((SignaturePluginConfig)services.Rebuilt[1]).Width);
+        Assert.Equal(88, Overlay((SignaturePluginConfig)services.Rebuilt[1]).Height);
+    }
+
+    [Theory]
+    [InlineData("49")]
+    [InlineData("101")]
+    [InlineData("abc")]
+    [InlineData("")]
+    [InlineData("75.5")]
+    public async Task Size_outside_the_slider_range_is_rejected(string value)
+    {
+        var (config, path) = TempConfig(OverlayThemes.Default);
+        var plugin = new SignaturePlugin(null, config, path);
+        var services = new FakePluginServices();
+
+        await plugin.OnApplySettings(ApplyScale(value), services, default);
+
+        Assert.Empty(services.Rebuilt);
+        Assert.Empty(services.Published);
+        Assert.Equal(100, PluginConfig.Load<SignaturePluginConfig>(path).OverlayScale);
+    }
+
+    [Fact]
+    public async Task Size_and_theme_compose_on_the_themed_dimensions()
+    {
+        var (config, path) = TempConfig(OverlayThemes.Default);
+        var plugin = new SignaturePlugin(null, config, path);
+        var services = new FakePluginServices();
+
+        await plugin.OnApplySettings(ApplyScale("50"), services, default);
+        await plugin.OnApplySettings(Apply(OverlayThemes.Citizen), services, default);
+
+        var rebuilt = Overlay((SignaturePluginConfig)services.Rebuilt[1]);
+        Assert.Equal(225, rebuilt.Width); // citizen's 450 at 50%, not the default pill's 210
+        Assert.Equal(14, rebuilt.FontSize);
     }
 
     [Fact]
@@ -306,6 +373,8 @@ public class SignaturePluginSettingsTests
 
     private static ApplySettings Apply(string theme) => new([new SettingsValue("overlayTheme", theme)]);
 
+    private static ApplySettings ApplyScale(string percent) => new([new SettingsValue("overlayScale", percent)]);
+
     private static ApplySettings ApplyPosition(string position) => new([new SettingsValue("position", position)]);
 
     private static ApplySettings ApplyBoth(string theme, string position) =>
@@ -313,6 +382,9 @@ public class SignaturePluginSettingsTests
 
     private static SettingsField ThemeField(FakePluginServices services) =>
         Assert.Single(services.Published).Fields.Single(field => field.Id == "overlayTheme");
+
+    private static SettingsField ScaleField(FakePluginServices services) =>
+        Assert.Single(services.Published).Fields.Single(field => field.Id == "overlayScale");
 
     private static SettingsField PositionField(FakePluginServices services) =>
         Assert.Single(services.Published).Fields.Single(field => field.Id == "position");

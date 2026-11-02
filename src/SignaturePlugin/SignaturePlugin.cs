@@ -45,13 +45,14 @@ public sealed class SignaturePlugin : IOcrxPlugin
     private const int ReconnectClearAttempt = 4;
 
     /// <summary>
-    /// The opaque ids SignaturePlugin gives its projected settings — the overlay theme and position.
+    /// The opaque ids SignaturePlugin gives its projected settings — the overlay theme, position and size.
     /// The engine forwards each back untouched on a user edit and never learns what either means,
     /// which is exactly why they can live entirely inside this plugin with no engine-side manifest or
     /// version gate.
     /// </summary>
     private const string OverlayThemeSettingId = "overlayTheme";
     private const string PositionSettingId = "position";
+    private const string ScaleSettingId = "overlayScale";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SignatureTable _table;
@@ -186,8 +187,8 @@ public sealed class SignaturePlugin : IOcrxPlugin
     }
 
     /// <summary>
-    /// Applies a user's theme and/or position edit entirely inside this process: validate each value
-    /// against its own owner (<see cref="OverlayThemes"/>/<see cref="OverlayPositions"/>), rebuild the
+    /// Applies a user's theme, position and/or size edit entirely inside this process: validate each value
+    /// against its own owner (<see cref="OverlayThemes"/>/<see cref="OverlayPositions"/>/<see cref="OverlayScales"/>), rebuild the
     /// live overlay from a clean base, republish the effective spec, and only then persist — so a
     /// failed rebuild leaves neither the running overlay nor config.json ahead of the other. The
     /// engine is never asked to validate anything.
@@ -200,8 +201,10 @@ public sealed class SignaturePlugin : IOcrxPlugin
             string.Equals(value.Id, OverlayThemeSettingId, StringComparison.Ordinal));
         var positionEdit = apply.Values.FirstOrDefault(value =>
             string.Equals(value.Id, PositionSettingId, StringComparison.Ordinal));
-        if (themeEdit is null && positionEdit is null)
-            // Neither id is one this plugin owns — the engine forwarded an edit that is not ours.
+        var scaleEdit = apply.Values.FirstOrDefault(value =>
+            string.Equals(value.Id, ScaleSettingId, StringComparison.Ordinal));
+        if (themeEdit is null && positionEdit is null && scaleEdit is null)
+            // None of the ids is one this plugin owns — the engine forwarded an edit that is not ours.
             // Nothing to do; never happens in practice but a no-op is the correct answer.
             return;
 
@@ -232,9 +235,20 @@ public sealed class SignaturePlugin : IOcrxPlugin
             position = OverlayPositions.Normalize(positionEdit.Value);
         }
 
+        var scale = OverlayScales.Normalize(_config.OverlayScale);
+        if (scaleEdit is not null)
+        {
+            if (!OverlayScales.TryParse(scaleEdit.Value, out scale))
+            {
+                services.Log($"SignaturePlugin: ignoring unknown overlay size '{scaleEdit.Value}'.");
+                return;
+            }
+        }
+
         var themeChanged = !string.Equals(theme, OverlayThemes.Normalize(_config.OverlayTheme), StringComparison.Ordinal);
         var positionChanged = !string.Equals(position, OverlayPositions.Normalize(_config.Position), StringComparison.Ordinal);
-        if (!themeChanged && !positionChanged)
+        var scaleChanged = scale != OverlayScales.Normalize(_config.OverlayScale);
+        if (!themeChanged && !positionChanged && !scaleChanged)
         {
             // Nothing actually changed — a same-value re-apply. Republish so the panel reflects the
             // current value, but do not rebuild — tearing down and re-drawing the overlay for a no-op
@@ -250,7 +264,9 @@ public sealed class SignaturePlugin : IOcrxPlugin
         var edited = _config.CloneForSettings<SignaturePluginConfig>(_configPath);
         edited.OverlayTheme = theme;
         edited.Position = position;
+        edited.OverlayScale = scale;
         OverlayThemes.Apply(edited);
+        OverlayScales.Apply(edited);
         OverlayPositions.Apply(edited);
 
         // Rebuild and republish against the edited clone *before* committing anything to _config, so a
@@ -274,6 +290,7 @@ public sealed class SignaturePlugin : IOcrxPlugin
 
         _config.OverlayTheme = theme;
         _config.Position = position;
+        _config.OverlayScale = scale;
         _config.Save(_configPath);
     }
 
@@ -281,7 +298,8 @@ public sealed class SignaturePlugin : IOcrxPlugin
     /// Builds the effective spec: two SELECT fields whose options come straight from
     /// <see cref="OverlayThemes.Options"/>/<see cref="OverlayPositions.Options"/> so they cannot drift
     /// from what can actually be applied, and whose values are the config's current theme and position
-    /// in canonical form.
+    /// in canonical form, plus the size as an INT bounded by <see cref="OverlayScales"/> (which the
+    /// engine draws as a slider).
     /// </summary>
     private static SettingsSpec BuildSpec(SignaturePluginConfig config) =>
         new([
@@ -298,6 +316,14 @@ public sealed class SignaturePlugin : IOcrxPlugin
                 Type: SettingsFieldType.Select,
                 Value: OverlayPositions.Normalize(config.Position),
                 Options: OverlayPositions.Options,
+                Group: "Overlay"),
+            new SettingsField(
+                Id: ScaleSettingId,
+                Label: "Size (%)",
+                Type: SettingsFieldType.Int,
+                Value: OverlayScales.Normalize(config.OverlayScale).ToString(CultureInfo.InvariantCulture),
+                Min: OverlayScales.Min,
+                Max: OverlayScales.Max,
                 Group: "Overlay"),
         ]);
 

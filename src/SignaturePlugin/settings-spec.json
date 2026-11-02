@@ -29,6 +29,15 @@
         { "value": "bottomright", "label": "Bottom Right" }
       ],
       "group": "Overlay"
+    },
+    {
+      "id": "overlayScale",
+      "label": "Size (%)",
+      "type": 2,
+      "value": "100",
+      "min": 50,
+      "max": 100,
+      "group": "Overlay"
     }
   ]
 }

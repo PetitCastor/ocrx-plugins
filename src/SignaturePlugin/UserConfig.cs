@@ -6,6 +6,9 @@ internal sealed class SignaturePluginConfig : PluginConfig
 {
     public string OverlayTheme { get; set; } = OverlayThemes.Default;
     public string Position { get; set; } = OverlayPositions.TopCenter;
+
+    /// <summary>The overlay's size as a percentage of its full size, 50 to 100; see <see cref="OverlayScales"/>.</summary>
+    public int OverlayScale { get; set; } = OverlayScales.Default;
 }
 
 internal static class UserConfig
