@@ -15,6 +15,24 @@
       "file": "frame_20260928_141610_032_borderless-1920x1200.png",
       "signature": 2000,
       "note": "Borderless at 1920x1200 on a 2560x1440 screen: the game upscales x1.2 and pillarboxes itself. OCR reads the comma as a period ('2.000')."
+    },
+    {
+      "file": "frame_20261104_143046_730_2560x1440-vfov84.png",
+      "signature": 7200,
+      "verticalFov": 83.9863,
+      "note": "2560x1440 at the top of the FOV slider, 116, stored as 83.9863 = 2*atan(tan(58 deg) / (16/9)). The badge sits ~84 px nearer screen centre than the calibrated rect, so the counter reads only once the FOV zoom moves it there. These frames pin the placement, not OCR reliability: at this FOV a single frame reads right about half the time, and these are the ones of six that did. The live plugin holds the value through SignatureConsensus."
+    },
+    {
+      "file": "frame_20261104_143048_262_2560x1440-vfov84.png",
+      "signature": 7200,
+      "verticalFov": 83.9863,
+      "note": "Same session as frame_20261104_143046_730."
+    },
+    {
+      "file": "frame_20261104_143113_753_windowed-1920x1440-vfov84.png",
+      "signature": 7200,
+      "verticalFov": 83.9863,
+      "note": "Windowed 1920x1440 at the same stored FOV as the 2560x1440 frames: the badge stays on the same row (y~559), so the vertical FOV alone places it whatever the aspect. Covers the height scale mode and the FOV zoom together. 1600x1200 at this FOV is not in this corpus: the digits are ~7 px tall there, too few for OCR on a single frame."
     }
   ]
 }
