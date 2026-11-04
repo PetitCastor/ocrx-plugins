@@ -43,7 +43,8 @@ public class ReplayParityTests
             {
                 if (expected.Name is null)
                 {
-                    await AssertCounterReadsSignature(oneFrameCorpus, expected.File, expected.Signature!.Value);
+                    await AssertCounterReadsSignature(
+                        oneFrameCorpus, expected.File, expected.Signature!.Value, expected.VerticalFov);
                     continue;
                 }
 
@@ -88,15 +89,16 @@ public class ReplayParityTests
     /// produce a plugin observation, so it pins the step before matching instead: the counter ROI,
     /// placed by the engine for this frame's size and the game's scale mode, has to OCR to text the
     /// plugin's own parser reads as the manifest's signature. Needs the published games.json
-    /// (star-citizen, scaleMode "height") for the frames taller than 16:9.
+    /// (star-citizen, scaleMode "height") for the frames taller than 16:9. A frame recorded with the
+    /// game's stored vertical FOV is read through the counter zoomed for that FOV.
     /// </summary>
-    private static async Task AssertCounterReadsSignature(string corpus, string file, double signature)
+    private static async Task AssertCounterReadsSignature(string corpus, string file, double signature, double? verticalFov)
     {
         var result = await ReplayHarness.RunAsync(new ReplayOptions
         {
             EnginePath = EngineLocator.Resolve(),
             CorpusDir = corpus,
-            Plugin = new CounterReadingProbe(),
+            Plugin = new CounterReadingProbe(verticalFov),
         });
 
         Assert.Equal(0, result.ExitCode);
@@ -107,7 +109,7 @@ public class ReplayParityTests
         Assert.True(signature == read, $"{file}: counter OCR '{raw}' parsed as {read}, expected {signature}");
     }
 
-    private static IReadOnlyList<(string File, string? Name, string? Kind, double? Signature, int? Count)> ReadManifest(string path)
+    private static IReadOnlyList<(string File, string? Name, string? Kind, double? Signature, int? Count, double? VerticalFov)> ReadManifest(string path)
     {
         Assert.True(File.Exists(path), $"manifest not copied to the test output: {path}");
 
@@ -117,7 +119,7 @@ public class ReplayParityTests
             frames.ValueKind == JsonValueKind.Array,
             "manifest must contain a 'frames' array");
 
-        var expected = new List<(string File, string? Name, string? Kind, double? Signature, int? Count)>();
+        var expected = new List<(string File, string? Name, string? Kind, double? Signature, int? Count, double? VerticalFov)>();
         foreach (var frame in frames.EnumerateArray())
         {
             var file = frame.GetProperty("file").GetString() ?? string.Empty;
@@ -127,8 +129,13 @@ public class ReplayParityTests
                 ? signatureElement.GetDouble() : null;
             int? count = frame.TryGetProperty("count", out var countElement)
                 ? countElement.GetInt32() : null;
+            double? verticalFov = frame.TryGetProperty("verticalFov", out var fovElement)
+                ? fovElement.GetDouble() : null;
 
             Assert.False(string.IsNullOrWhiteSpace(file), "manifest frame file is required");
+            // Only the counter probe zooms for a recorded FOV; the real plugin keeps the calibrated
+            // rect on a replay, so an ore frame carrying one would silently ignore it.
+            Assert.True(verticalFov is null || name is null, $"{file}: verticalFov is only read on a bare-reading frame");
             // Either an ore observation (name and kind) or a bare reading (signature alone).
             if (name is null && kind is null)
             {
@@ -140,7 +147,7 @@ public class ReplayParityTests
                 Assert.False(string.IsNullOrWhiteSpace(kind), $"{file}: manifest frame kind is required with name");
             }
 
-            expected.Add((file, name, kind, signature, count));
+            expected.Add((file, name, kind, signature, count, verticalFov));
         }
 
         return expected;
@@ -148,7 +155,7 @@ public class ReplayParityTests
 
     private static void AssertManifestLabelsEveryPng(
         string corpusDir,
-        IReadOnlyList<(string File, string? Name, string? Kind, double? Signature, int? Count)> frames)
+        IReadOnlyList<(string File, string? Name, string? Kind, double? Signature, int? Count, double? VerticalFov)> frames)
     {
         var manifestFiles = frames
             .Select(f => NormalizeManifestPath(f.File))
