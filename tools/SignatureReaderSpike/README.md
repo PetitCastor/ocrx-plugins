@@ -56,8 +56,8 @@ The four frames that are not read are rejected, not misread:
   reports that they were rejected, not why);
 - one windowed 1602x1232 frame, read as `2000` but under the gate.
 
-All six 2560x1440 frames at the top of the FOV range and all four 1600x1200 frames read right; their
-digits are 7 to 9 px tall.
+All six frames at the top of the FOV range (four 2560x1440, two 1920x1440) and all four 1600x1200
+frames read right; their digits are 7 to 9 px tall.
 
 ## What this does not prove
 
