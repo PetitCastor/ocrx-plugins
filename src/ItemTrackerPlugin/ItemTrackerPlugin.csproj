@@ -26,7 +26,7 @@
     <!-- The standalone tracker got these from the ASP.NET shared framework: LogWatchService is a
          BackgroundService and the ingest stack logs through ILogger. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="11.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="11.0.0" />
   </ItemGroup>
 
   <!-- WinForms adds global usings for System.Windows.Forms and System.Drawing; their Screen, Timer and
