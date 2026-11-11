@@ -1,0 +1,12 @@
+{
+  "tag": "v2.10.1",
+  "channel": "stable",
+  "plugins": [
+    "SignaturePlugin"
+  ],
+  "notes": "SignaturePlugin v2.10.1 removes the brief game stutter when the overlay appears or disappears; signature reading is unchanged. Built on Ocrx.Sdk 2.10.0.",
+  "changes": [
+    "Fixed: The game no longer stutters for a split second each time the overlay appears or disappears while scanning.",
+    "Changed: Once nothing has been scanned for 15 seconds, the overlay steps aside completely so the game runs at its usual speed."
+  ]
+}
