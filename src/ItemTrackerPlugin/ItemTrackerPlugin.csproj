@@ -16,7 +16,7 @@
 
   <ItemGroup>
     <PackageReference Include="Ocrx.Sdk" Version="2.9.0" />
-    <PackageReference Include="Ocrx.Contracts" Version="2.9.0" />
+    <PackageReference Include="Ocrx.Contracts" Version="2.10.0" />
     <PackageReference Include="Ocrx.Sdk.Overlay" Version="2.9.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.15" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
