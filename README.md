@@ -165,6 +165,15 @@ magick -background none -density 1200 MyPlugin.svg -define icon:auto-resize=16,2
 
 [`ItemTracker.svg`](src/ItemTrackerPlugin/Window/ItemTracker.svg) is the reference.
 
+## Support and contact
+
+- **Question, wrong read or plugin idea:** start a thread in
+  [Discussions](https://github.com/PetitCastor/ocrx-plugins/discussions). Screenshots help a lot.
+- **Bug you can reproduce:** [open an issue](https://github.com/PetitCastor/ocrx-plugins/issues/new/choose).
+- **Security problem:** report it privately, as described in [SECURITY.md](SECURITY.md).
+
+Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## References
 
 - [SignaturePlugin](src/SignaturePlugin/README.md) — the current official plugin.

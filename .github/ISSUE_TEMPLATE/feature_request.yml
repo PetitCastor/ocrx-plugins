@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest an improvement to an existing plugin.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        An idea for a new plugin, or one that is not settled yet, is better started in [Discussions](https://github.com/PetitCastor/ocrx-plugins/discussions).
+  - type: dropdown
+    id: plugin
+    attributes:
+      label: Plugin
+      options:
+        - SignaturePlugin
+        - Item Tracker (preview)
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation in game where the plugin falls short.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help
+      description: How you imagine it working. Rough ideas are fine.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Anything else
+      description: Workarounds you use today, screenshots, links.

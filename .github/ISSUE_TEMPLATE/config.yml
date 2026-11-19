@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question, wrong read or plugin idea
+    url: https://github.com/PetitCastor/ocrx-plugins/discussions
+    about: Ask how something works, post a misread with a screenshot, share a new signature value or pitch a plugin. Start here when you are not sure it is a bug.
+  - name: Security problem
+    url: https://github.com/PetitCastor/ocrx-plugins/security/advisories/new
+    about: Report a vulnerability privately. Do not open a public issue.

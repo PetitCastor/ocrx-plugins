@@ -46,3 +46,6 @@ local.config
 # ...except the README: the release ships three interdependent exes (engine first, matching
 # pipe name), and a clone or a release download has nowhere else to learn that.
 !/README.md
+# ...and the community files GitHub links from the Issues, Security and pull request pages.
+!/CONTRIBUTING.md
+!/SECURITY.md
