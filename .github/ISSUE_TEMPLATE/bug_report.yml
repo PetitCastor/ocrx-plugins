@@ -1,0 +1,76 @@
+name: Bug report
+description: A plugin crashes, will not start, or gets something wrong in a way you can reproduce.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. A single wrong ore or a question about how a plugin works is better posted in [Discussions](https://github.com/PetitCastor/ocrx-plugins/discussions), where it can be turned into an issue once it is understood.
+        For a security problem, do not use this form; see [SECURITY.md](https://github.com/PetitCastor/ocrx-plugins/blob/master/SECURITY.md).
+  - type: dropdown
+    id: plugin
+    attributes:
+      label: Plugin
+      options:
+        - SignaturePlugin
+        - Item Tracker (preview)
+    validations:
+      required: true
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      description: Shown next to the plugin's name in the OCRX window (tray icon, **Show OCRX**). For a preview, give the full version, such as `0.1.0-itemtracker-alpha.6`.
+      placeholder: 2.10.1
+    validations:
+      required: true
+  - type: input
+    id: engine-version
+    attributes:
+      label: OCRX engine version
+      description: Shown at the top of the same OCRX window.
+      placeholder: 2.2.0
+    validations:
+      required: true
+  - type: input
+    id: display
+    attributes:
+      label: Resolution and display mode
+      description: The game's resolution and whether it runs windowed, borderless or fullscreen. Add your in-game FOV for a SignaturePlugin reading problem.
+      placeholder: 2560x1440, borderless, FOV 90
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw on screen or in the plugin's window.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you did in the game and in OCRX, in order.
+      placeholder: |
+        1. Started SignaturePlugin from the tray menu
+        2. Opened scan mode on an asteroid
+        3. The overlay never appeared
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: A full-screen capture of the moment it went wrong helps most, since the plugins read the screen. Crop out anything you do not want public.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log excerpts
+      description: |
+        SignaturePlugin: the output of `SignaturePlugin.exe --verbose` (see its [troubleshooting section](https://github.com/PetitCastor/ocrx-plugins/blob/master/src/SignaturePlugin/README.md#troubleshooting)).
+        Item Tracker: `tracker.log` in `%LOCALAPPDATA%\OCRX\ItemTracker`, and the relevant lines of the game's `Game.log`.
+        `Game.log` contains your RSI handle and other account details: share only the lines around the problem and remove anything you do not want public.
+      render: text

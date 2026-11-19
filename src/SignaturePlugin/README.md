@@ -8,7 +8,7 @@ do not have to look the number up.
 ## Using it
 
 1. Start the OCRX engine and install SignaturePlugin: right-click the tray icon, choose
-   **Plugins…**, and install it.
+   **Show OCRX**, and click **Install** on SignaturePlugin in the **Plugins** list.
 2. Launch Star Citizen. The engine offers to capture it: accept the **Capture Star Citizen** offer,
    which also starts the plugin. (Otherwise pick **Launch** for SignaturePlugin in the tray menu;
    the engine never starts a plugin on its own.)
