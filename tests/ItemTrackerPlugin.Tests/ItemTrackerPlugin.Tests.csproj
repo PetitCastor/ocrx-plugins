@@ -27,7 +27,7 @@
 
   <ItemGroup>
     <!-- TickDataBuilder and ReplayHarness; brings Ocrx.Sdk and Ocrx.Contracts transitively. -->
-    <PackageReference Include="Ocrx.Sdk.Testing" Version="2.9.0" />
+    <PackageReference Include="Ocrx.Sdk.Testing" Version="2.10.0" />
   </ItemGroup>
 
   <!-- The plugin's WebView2 package reaches here through buildTransitive, WPF reference included;
